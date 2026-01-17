@@ -1,0 +1,5 @@
+{
+  "name": "Paris Tram Simulator 3D",
+  "description": "A component-based 3D tram simulator ported to React, featuring weather systems, passenger AI, and track physics.",
+  "requestFramePermissions": []
+}

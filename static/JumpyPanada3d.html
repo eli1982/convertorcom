@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JumpyPanda3D - Fixed Final</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        #score-display {
+            position: absolute;
+            top: 20px;
+            font-size: 48px;
+            font-weight: 900;
+            color: white;
+            text-shadow: 3px 3px 0 #3e2723;
+            pointer-events: none;
+            display: none;
+        }
+        /* Camera Button */
+        #camera-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.25);
+            border: 2px solid white;
+            border-radius: 12px;
+            cursor: pointer;
+            pointer-events: auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+            transition: transform 0.1s, background 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        #camera-btn:active {
+            transform: scale(0.95);
+            background: rgba(255, 255, 255, 0.4);
+        }
+        #camera-btn svg {
+            fill: white;
+            width: 30px;
+            height: 30px;
+            filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.5));
+        }
+
+        .screen {
+            background: rgba(62, 39, 35, 0.9);
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            color: white;
+            backdrop-filter: blur(5px);
+            border: 4px solid #d7ccc8;
+            pointer-events: auto;
+            transition: opacity 0.3s;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+        h1 { margin: 0 0 10px 0; font-size: 32px; color: #ffeb3b; text-shadow: 2px 2px #000; font-family: 'Courier New', Courier, monospace; }
+        p { font-size: 18px; margin-bottom: 20px; font-family: 'Courier New', Courier, monospace;}
+        .btn {
+            background: #8d6e63;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #5d4037;
+            transition: transform 0.1s;
+            text-transform: uppercase;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #5d4037;
+        }
+        #start-screen { display: flex; flex-direction: column; align-items: center; }
+        #game-over-screen { display: none; flex-direction: column; align-items: center; }
+        
+        @media (max-width: 600px) {
+            #score-display { top: 10px; font-size: 36px; }
+            .screen { width: 80%; padding: 20px; }
+            h1 { font-size: 24px; }
+            #camera-btn { top: 10px; right: 10px; width: 40px; height: 40px; }
+            #camera-btn svg { width: 24px; height: 24px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container"></div>
+
+    <div id="ui-layer">
+        <div id="score-display">0</div>
+        
+        <div id="camera-btn" title="Change View">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/> 
+                <path d="M9 3L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2h-3.17L15 3H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+            </svg>
+        </div>
+
+        <div id="start-screen" class="screen">
+            <h1>JumpyPanda3D</h1>
+            <p>Final Fixed Edition</p>
+            <p style="font-size: 14px; opacity: 0.8;">Tap to Jump • Double Tap to Double Jump</p>
+            <button class="btn" id="start-btn">PLAY</button>
+        </div>
+
+        <div id="game-over-screen" class="screen">
+            <h1>OOF!</h1>
+            <p>You fell into the abyss.</p>
+            <p>Score: <span id="final-score">0</span></p>
+            <button class="btn" id="restart-btn">TRY AGAIN</button>
+        </div>
+    </div>
+
+    <!-- Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- CONFIGURATION ---
+        const PANDA_FACE_SRC = "1763894420580.jpeg";
+
+        const COLORS = {
+            SKY: 0x87CEEB,
+            FOG: 0xc8d5e8,
+            LOG_BARK: 0x6d4c41,
+            LOG_END: 0xd4a574,
+            PANDA_WHITE: 0xffffff,
+            PANDA_BLACK: 0x1a1a1a,
+            RED: 0xc92e2e,
+            GROUND: 0x593a23,
+            TREE_DARK: 0x4caf50,
+            TREE_DARKER: 0x2e7d32,
+            TREE_ORANGE: 0xff9800,
+            TRUNK: 0x5d4037,
+            STRAW: 0xf4d03f,
+            CLOUD: 0xfefefe
+        };
+
+        const PHYSICS = {
+            GRAVITY: -0.65,
+            JUMP_FORCE: 12,
+            DOUBLE_JUMP_FORCE: 10,
+            RUN_SPEED: 0.22,
+        };
+        
+        const SETTINGS = {
+            CLOUD_DENSITY: 0.6, 
+            CLOUD_SPEED_FACTOR: 0.5,
+            RIVER_WIDTH: 10,
+            RIVER_AMP: 4, // Final requested amplitude in world units
+            RIVER_FREQ: 2
+        };
+
+        // --- GLOBAL VARIABLES ---
+        let scene, camera, renderer;
+        let panda, distantGround, groundPlane;
+        let clouds = []; 
+        let trees = [];  
+        let branches = [];
+        let particles = [];
+        let score = 0;
+        let isGameRunning = false;
+        let lastTime = 0;
+        let worldSpeed = 0;
+        let animationId = null;
+        
+        let playerVelocityY = 0;
+        let isGrounded = false;
+        let jumpCount = 0; 
+        
+        let nextBranchX = 0;
+        let lastBranchHeight = 0;
+        let audioCtx;
+        
+        let barkTexture, ringsTexture, faceTexture, groundTexture;
+        let groundCanvas, groundCtx, staticGroundImage;
+        let existingTrees = [];
+        let isTopView = false;
+        
+        let RIVER_AVOID_RADIUS = 0; // Calculated in init
+
+        // --- HELPER FUNCTIONS ---
+
+        function toggleCamera() {
+            isTopView = !isTopView;
+            updateCameraPosition();
+        }
+
+        function updateCameraPosition() {
+            if (isTopView) {
+                // Zoomed Top View
+                camera.position.set(3, 40, 0); 
+                camera.lookAt(3, 0, 0);
+            } else {
+                // Zoomed Side View
+                camera.position.set(-16, 14, 16); 
+                camera.lookAt(2, 0, 0);
+            }
+        }
+
+        // Calculates the world Z position of the river center for a given world X
+        function getRiverZ(worldX) {
+            const worldAmp = SETTINGS.RIVER_AMP; 
+            const cycleLength = 250 / SETTINGS.RIVER_FREQ;
+            const k = (Math.PI * 2) / cycleLength;
+            return Math.sin(worldX * k) * worldAmp;
+        }
+
+        function drawSineRiver(ctx, width, centerY, freq, amp) {
+            ctx.beginPath();
+            for (let x = -10; x <= width + 10; x+=10) {
+                const y = centerY + Math.sin((x / width) * Math.PI * 2 * freq) * amp;
+                if (x === -10) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+        }
+
+        function createBarkTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#6d4c41'; 
+            ctx.fillRect(0, 0, 256, 256);
+            for(let i=0; i<200; i++) {
+                const shade = Math.random() > 0.5 ? '#5d4037' : '#8d6e63';
+                ctx.fillStyle = shade;
+                ctx.fillRect(Math.random()*256, Math.random()*256, Math.random()*5+2, Math.random()*40+20);
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(4, 1);
+            return texture;
+        }
+
+        function createRingsTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const centerX = 64; const centerY = 64;
+            ctx.fillStyle = '#e8d4a8'; 
+            ctx.fillRect(0, 0, 128, 128);
+            ctx.strokeStyle = '#b8945f';
+            ctx.lineWidth = 2;
+            for(let r=5; r<70; r+=Math.random()*5+3) {
+                ctx.beginPath();
+                for(let a=0; a<Math.PI*2; a+=0.1) {
+                    const r_wobble = r + Math.sin(a*5)*2;
+                    ctx.lineTo(centerX + Math.cos(a)*r_wobble, centerY + Math.sin(a)*r_wobble);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        function createGroundTexture() {
+            const size = 1024;
+            groundCanvas = document.createElement('canvas');
+            groundCanvas.width = size;
+            groundCanvas.height = size;
+            groundCtx = groundCanvas.getContext('2d');
+
+            // Draw static elements once
+            drawStaticGroundElements(size);
+            
+            // Save the static image to avoid redrawing grass
+            staticGroundImage = groundCtx.getImageData(0, 0, size, size);
+
+            const texture = new THREE.CanvasTexture(groundCanvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(4, 1);
+            return texture;
+        }
+
+        function drawStaticGroundElements(size) {
+            // 1. Base Ground
+            groundCtx.fillStyle = '#2d5a3d';
+            groundCtx.fillRect(0, 0, size, size);
+
+            // 2. Procedural Grass
+            for(let i=0; i<200000; i++) {
+                const c = Math.random();
+                if (c < 0.33) groundCtx.fillStyle = '#3d6b4a';
+                else if (c < 0.66) groundCtx.fillStyle = '#4a7c57';
+                else groundCtx.fillStyle = '#234a32';
+                
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const w = Math.random() *2;
+                const h = Math.random() *2;
+                groundCtx.fillRect(x, y, w, h);
+            }
+
+            // 3. Endless Winding River
+            const pxPerWorldUnit = size / 250;
+            const riverWidthPx = SETTINGS.RIVER_WIDTH * pxPerWorldUnit;
+            const riverAmpPx = SETTINGS.RIVER_AMP * pxPerWorldUnit;
+            
+            // Sand Banks
+            groundCtx.lineWidth = riverWidthPx + 15;
+            groundCtx.lineCap = 'round';
+            groundCtx.strokeStyle = '#f5dda9';
+            drawSineRiver(groundCtx, size, size/2, SETTINGS.RIVER_FREQ, riverAmpPx);
+            groundCtx.stroke();
+
+            // Water
+            groundCtx.lineWidth = riverWidthPx;
+            groundCtx.strokeStyle = '#42a5f5';
+            drawSineRiver(groundCtx, size, size/2, SETTINGS.RIVER_FREQ, riverAmpPx);
+            groundCtx.stroke();
+        }
+
+        function updateWaterRipples(time) {
+            if (!groundCtx || !groundTexture || !staticGroundImage) return;
+            
+            const size = 1024;
+            const pxPerWorldUnit = size / 250;
+            const riverWidthPx = SETTINGS.RIVER_WIDTH * pxPerWorldUnit;
+            const riverAmpPx = SETTINGS.RIVER_AMP * pxPerWorldUnit;
+            
+            // Restore static image (grass, sand, base water)
+            groundCtx.putImageData(staticGroundImage, 0, 0);
+            
+            // Animate ripples near banks only (foam effect)
+            for (let i = 0; i < 6; i++) {
+                const offset = (1-(time * 0.0003 + i * 0.2) % 1); // Reversed direction
+                const opacity = Math.sin(offset * Math.PI) * 0.4 * (i / 8); // Fade with distance
+                
+                groundCtx.lineWidth = 1.5;
+                groundCtx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+                
+                // Upper bank ripple (near sand bank edge)
+                drawSineRiver(groundCtx, size, size/2 - riverWidthPx/2 + 3 + i * 2, SETTINGS.RIVER_FREQ, riverAmpPx);
+                groundCtx.stroke();
+                
+                // Lower bank ripple (near sand bank edge)
+                drawSineRiver(groundCtx, size, size/2 + riverWidthPx/2 - 3 - i * 2, SETTINGS.RIVER_FREQ, riverAmpPx);
+                groundCtx.stroke();
+            }
+            
+            groundTexture.needsUpdate = true;
+        }
+
+        function createCloudMesh(cloudGeo, cloudMat) {
+            const cloud = new THREE.Group();
+            const clusterSize = Math.floor(Math.random() * 3) + 5;
+            for(let j=0; j<clusterSize; j++) {
+                const puff = new THREE.Mesh(cloudGeo, cloudMat);
+                puff.position.set(
+                    (Math.random()-0.5)*3,
+                    (Math.random()-0.5)*3,
+                    (Math.random()-0.5)*3
+                );
+                const s = 1.5 + Math.random()*2;
+                puff.scale.set(s, s*0.6, s);
+                cloud.add(puff);
+            }
+            return cloud;
+        }
+
+        // --- SCENE GENERATORS ---
+
+        function createBackground() {
+            const skyGeo = new THREE.SphereGeometry(150, 32, 32);
+            skyGeo.scale(-1, 1, 1);
+            const skyMat = new THREE.MeshBasicMaterial({ color: COLORS.SKY });
+            const sky = new THREE.Mesh(skyGeo, skyMat);
+            scene.add(sky);
+        }
+
+        function createClouds() {
+            clouds = []; 
+            
+            const cloudGeo = new THREE.BoxGeometry(1, 1, 1);
+            const cloudMat = new THREE.MeshStandardMaterial({ 
+                color: COLORS.CLOUD, 
+                roughness: 1, 
+                flatShading: true,
+                transparent: true,
+                opacity: 1
+            });
+
+            const count = 100 * SETTINGS.CLOUD_DENSITY; 
+
+            // 1. Peripheral Clouds (lower layer)
+            for(let i=0; i<count*2; i++) {
+                const cloud = createCloudMesh(cloudGeo, cloudMat);
+                const x = (Math.random() - 0.5) * 300;
+                let z = (Math.random() * 20) + 5;
+                if (Math.random() > 0.5) z *= -1;
+                const y = -8 + (Math.random() - 0.5) * 3; 
+                cloud.position.set(x, y, z);
+                cloud.userData = { isHighCloud: false };
+                scene.add(cloud);
+                clouds.push(cloud);
+            }
+
+            // 2. Central Clouds (lower layer)
+            for(let i=0; i<count; i++) {
+                const cloud = createCloudMesh(cloudGeo, cloudMat);
+                const x = (Math.random() - 0.5) * 300;
+                let z = (Math.random() * 10) - 5; 
+                const y = -9 + (Math.random() - 0.5) * 3;
+                cloud.position.set(x, y, z);
+                cloud.userData = { isHighCloud: false };
+                scene.add(cloud);
+                clouds.push(cloud);
+            }
+
+            // 3. High Clouds (sparse, closer to camera)
+            const highCloudMat = new THREE.MeshStandardMaterial({ 
+                color: COLORS.CLOUD, 
+                roughness: 1, 
+                flatShading: true,
+                transparent: true,
+                opacity: 0.6
+            });
+            
+            const highCount = count * 1; // Less dense
+            for(let i=0; i<highCount; i++) {
+                const cloud = createCloudMesh(cloudGeo, highCloudMat);
+                const x = (Math.random() - 0.5) * 300;
+                const z = (Math.random() - 0.5) * 60; // Much closer to camera
+                const y = (Math.random() - 0.5) * 20; 
+                cloud.position.set(x, y, z);
+                cloud.userData = { isHighCloud: true, originalOpacity: 0.6 };
+                scene.add(cloud);
+                clouds.push(cloud);
+            }
+        }
+
+        function createDistantGround() {
+            // Static Ground Plane with Texture
+            const planeGeo = new THREE.PlaneGeometry(1000, 1000);
+            const planeMat = new THREE.MeshStandardMaterial({ 
+                map: groundTexture,
+                roughness: 1.0 
+            });
+            groundPlane = new THREE.Mesh(planeGeo, planeMat);
+            groundPlane.rotation.x = -Math.PI / 2;
+            groundPlane.position.y = -35;
+            groundPlane.receiveShadow = true;
+            scene.add(groundPlane);
+
+            const treeDarkMat = new THREE.MeshStandardMaterial({ color: COLORS.TREE_DARK, roughness: 0.8, flatShading: true });
+            const treeDarkerMat = new THREE.MeshStandardMaterial({ color: COLORS.TREE_DARKER, roughness: 0.8, flatShading: true });
+            const treeOrangeMat = new THREE.MeshStandardMaterial({ color: COLORS.TREE_ORANGE, roughness: 0.8, flatShading: true });
+            const trunkMat = new THREE.MeshStandardMaterial({ color: COLORS.TRUNK, roughness: 1.0, flatShading: true });
+
+            trees = []; 
+            existingTrees = []; 
+
+            for(let i=0; i<300; i++) {
+                let x, z, scale;
+                let attempts = 0;
+                let validPosition = false;
+                let treeBox;
+                let treeVolume = 0;
+
+                while (!validPosition && attempts < 20) {
+                    attempts++;
+                    x = (Math.random() - 0.5) * 400; 
+                    z = (Math.random() - 0.5) * 300; 
+                    scale = 1.5 + Math.random() * 3.5;
+                    
+                    // 1. RIVER AVOIDANCE CHECK
+                    const riverCenterZ = getRiverZ(x);
+                    const leavesSize = 1.5 * scale;
+                    const treeRadius = leavesSize / 2 + 0.5; // Half the leaves size plus margin
+                    
+                    // Check if any part of the tree (trunk + leaves) would intersect river/bank
+                    if (Math.abs(z - riverCenterZ) < (RIVER_AVOID_RADIUS + treeRadius)) {
+                        continue; // Too close to river/bank
+                    }
+
+                    // 2. OVERLAP CHECK
+                    const min = new THREE.Vector3(x - leavesSize/2 - 0.5, 0, z - leavesSize/2 - 0.5);
+                    const max = new THREE.Vector3(x + leavesSize/2 + 0.5, 2.5 * scale, z + leavesSize/2 + 0.5);
+                    treeBox = new THREE.Box3(min, max);
+                    treeVolume = (max.x - min.x) * (max.y - min.y) * (max.z - min.z); // Recalculate volume
+
+                    let collision = false;
+                    for (const otherTreeBox of existingTrees) {
+                        if (treeBox.intersectsBox(otherTreeBox)) {
+                            const intersectionBox = treeBox.clone().intersect(otherTreeBox);
+                            const intersectionVolume = (intersectionBox.max.x - intersectionBox.min.x) * (intersectionBox.max.y - intersectionBox.min.y) * (intersectionBox.max.z - intersectionBox.min.z);
+                            const otherTreeVolume = (otherTreeBox.max.x - otherTreeBox.min.x) * (otherTreeBox.max.y - otherTreeBox.min.y) * (otherTreeBox.max.z - otherTreeBox.min.z);
+                            
+                            const smallerVolume = Math.min(treeVolume, otherTreeVolume);
+                            if (intersectionVolume / smallerVolume > 0.1) {
+                                collision = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!collision) {
+                        validPosition = true;
+                        existingTrees.push(treeBox);
+                    }
+                }
+
+                if (!validPosition) continue; 
+
+                const tree = new THREE.Group();
+                const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.4*scale, 2*scale, 0.4*scale), trunkMat);
+                trunk.position.y = scale;
+                trunk.castShadow = true;
+                
+                const rand = Math.random();
+                let leafMat = treeDarkMat;
+                if (rand < 0.1) leafMat = treeOrangeMat;
+                else if (rand < 0.4) leafMat = treeDarkerMat;
+
+                const leaves = new THREE.Mesh(new THREE.BoxGeometry(1.5*scale, 1.5*scale, 1.5*scale), leafMat);
+                leaves.position.y = 2.5*scale;
+                leaves.castShadow = true;
+
+                tree.add(trunk);
+                tree.add(leaves);
+                tree.position.set(x, -35, z);
+                tree.rotation.y = Math.random() * Math.PI * 2;
+                
+                scene.add(tree);
+                trees.push(tree);
+            }
+        }
+
+        function createPanda() {
+            panda = new THREE.Group();
+
+            const whiteMat = new THREE.MeshStandardMaterial({ color: COLORS.PANDA_WHITE, roughness: 0.9, flatShading: true });
+            const blackMat = new THREE.MeshStandardMaterial({ color: COLORS.PANDA_BLACK, roughness: 0.9, flatShading: true });
+            const redMat = new THREE.MeshStandardMaterial({ color: COLORS.RED, roughness: 0.8, flatShading: true });
+            const strawMat = new THREE.MeshStandardMaterial({ color: COLORS.STRAW, roughness: 1.0, flatShading: true });
+
+            const faceMat = new THREE.MeshStandardMaterial({ 
+                map: faceTexture, 
+                transparent: true,
+                alphaTest: 0.5,
+                roughness: 0.9
+            });
+
+            const bodyGeo = new THREE.BoxGeometry(1.1, 0.8, 0.8);
+            const body = new THREE.Mesh(bodyGeo, whiteMat);
+            body.position.y = 0.7;
+            body.castShadow = false;
+            panda.add(body);
+
+            const chestGeo = new THREE.BoxGeometry(1.12, 0.35, 0.82);
+            const chest = new THREE.Mesh(chestGeo, blackMat);
+            chest.position.y = 0.9;
+            chest.castShadow = false;
+            panda.add(chest);
+
+            const beltGeo = new THREE.BoxGeometry(1.15, 0.15, 0.85);
+            const belt = new THREE.Mesh(beltGeo, redMat);
+            belt.position.y = 0.5;
+            belt.castShadow = false;
+            panda.add(belt);
+
+            const knotGeo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
+            const knot = new THREE.Mesh(knotGeo, redMat);
+            knot.position.set(0, 0.45, 0.35);
+            knot.rotation.z = -0.2;
+            panda.add(knot);
+
+            const headGeo = new THREE.BoxGeometry(1.0, 0.8, 0.8);
+            
+            const headMaterials = [
+                faceMat, 
+                whiteMat, 
+                whiteMat, 
+                whiteMat, 
+                whiteMat, 
+                whiteMat
+            ];
+
+            const head = new THREE.Mesh(headGeo, headMaterials);
+            head.position.y = 1.6;
+            head.castShadow = false;
+            panda.add(head);
+
+            const earGeo = new THREE.BoxGeometry(0.25, 0.25, 0.1);
+            const earL = new THREE.Mesh(earGeo, blackMat);
+            earL.position.set(0, 2.0, 0.35);
+            const earR = new THREE.Mesh(earGeo, blackMat);
+            earR.position.set(0, 2.0, -0.35);
+            panda.add(earL);
+            panda.add(earR);
+
+            const hatGroup = new THREE.Group();
+            hatGroup.position.y = 2.05;
+            const hatBodyGeo = new THREE.ConeGeometry(1.1, 0.4, 32);
+            const hatBody = new THREE.Mesh(hatBodyGeo, strawMat);
+            hatBody.castShadow = false;
+            hatGroup.add(hatBody);
+            panda.add(hatGroup);
+
+            const limbGeo = new THREE.BoxGeometry(0.25, 0.5, 0.25);
+            
+            const legL = new THREE.Mesh(limbGeo, blackMat);
+            legL.position.set(0, 0.25, 0.3);
+            panda.add(legL);
+            panda.legL = legL;
+
+            const legR = new THREE.Mesh(limbGeo, blackMat);
+            legR.position.set(0, 0.25, -0.3);
+            panda.add(legR);
+            panda.legR = legR;
+
+            const armGeo = new THREE.BoxGeometry(0.25, 0.4, 0.25);
+            const armL = new THREE.Mesh(armGeo, blackMat);
+            armL.position.set(0.2, 1.0, 0.6);
+            armL.rotation.z = -0.5;
+            panda.add(armL);
+            panda.armL = armL;
+
+            const armR = new THREE.Mesh(armGeo, blackMat);
+            armR.position.set(0.2, 1.0, -0.6);
+            armR.rotation.z = -0.5;
+            panda.add(armR);
+            panda.armR = armR;
+
+            scene.add(panda);
+        }
+
+        function createLog(x, y, z, length) {
+            const group = new THREE.Group();
+            const radius = 0.9;
+            
+            const myBarkTex = barkTexture.clone();
+            myBarkTex.repeat.set(Math.max(2, length/3), 1); 
+            myBarkTex.needsUpdate = true;
+
+            const barkMat = new THREE.MeshStandardMaterial({ 
+                map: myBarkTex,
+                roughness: 0.9,
+                bumpMap: myBarkTex,
+                bumpScale: 0.1,
+                transparent: true,
+                opacity: 0
+            });
+            const ringsMat = new THREE.MeshStandardMaterial({ 
+                map: ringsTexture,
+                roughness: 0.8,
+                color: 0xe3d689,
+                transparent: true,
+                opacity: 0
+            });
+            const materials = [barkMat, ringsMat, ringsMat];
+
+            const geometry = new THREE.CylinderGeometry(radius, radius, length, 16);
+            geometry.rotateZ(Math.PI / 2); 
+            
+            const mesh = new THREE.Mesh(geometry, materials);
+            mesh.castShadow = false; 
+            mesh.receiveShadow = true;
+            group.add(mesh);
+
+            const knotGeo = new THREE.BoxGeometry(0.2, 0.2, 0.1);
+            const knotMat = new THREE.MeshStandardMaterial({color: COLORS.LOG_END, flatShading: true, transparent: true, opacity: 0});
+            
+            for(let i=0; i<Math.floor(length/3); i++) {
+                const knot = new THREE.Mesh(knotGeo, knotMat);
+                const kX = (Math.random() - 0.5) * length * 0.8;
+                const angle = Math.random() * Math.PI * 2;
+                knot.position.set(kX, Math.cos(angle)*radius, Math.sin(angle)*radius);
+                knot.lookAt(kX, 0, 0);
+                group.add(knot);
+            }
+
+            group.position.set(x, y, z);
+            
+            group.userData = {
+                width: length,
+                radius: radius,
+                passed: false,
+                opacity: 0,
+                fadeInComplete: false,
+                materials: [barkMat, ringsMat, knotMat]
+            };
+
+            scene.add(group);
+            return group;
+        }
+
+        // --- MAIN INIT ---
+        function init() {
+            // Calculate fixed constants based on settings before use
+            const PIXELS_PER_WORLD_UNIT = 1024 / 250; 
+            const SAND_BANK_EXTRA_PX = 15; // Extra pixels for sand bank lineWidth (added to both sides)
+            const SAND_BANK_WORLD_WIDTH = SAND_BANK_EXTRA_PX / PIXELS_PER_WORLD_UNIT;
+            // Avoid radius = half river width + full sand bank width + large safety margin for largest trees
+            // Largest tree can have leaves up to (1.5 * 5) = 7.5, so radius ~3.75, adding extra margin
+            RIVER_AVOID_RADIUS = (SETTINGS.RIVER_WIDTH / 2) + SAND_BANK_WORLD_WIDTH + 12;
+            
+            barkTexture = createBarkTexture();
+            ringsTexture = createRingsTexture();
+            groundTexture = createGroundTexture(); 
+            
+            const textureLoader = new THREE.TextureLoader();
+            faceTexture = textureLoader.load(PANDA_FACE_SRC);
+            faceTexture.magFilter = THREE.NearestFilter; 
+            faceTexture.minFilter = THREE.NearestFilter;
+            faceTexture.encoding = THREE.sRGBEncoding;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(COLORS.FOG);
+            
+            // Linear Fog: Start 40, End 120
+            scene.fog = new THREE.Fog(COLORS.FOG, 50, 110);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(-10, 25, 15);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.far = 100;
+            dirLight.shadow.camera.left = -50;
+            dirLight.shadow.camera.right = 50;
+            dirLight.shadow.camera.top = 50;
+            dirLight.shadow.camera.bottom = -50;
+            scene.add(dirLight);
+
+            createBackground();
+            createDistantGround();
+            createClouds();
+            createPanda();
+
+            window.addEventListener('resize', onWindowResize, false);
+            
+            const gameContainer = document.getElementById('game-container');
+            gameContainer.addEventListener('mousedown', handleInput);
+            gameContainer.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleInput();
+            }, { passive: false });
+
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('restart-btn').addEventListener('click', resetGame);
+            document.getElementById('camera-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleCamera();
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // --- ANIMATION & GAMEPLAY ---
+
+        function startGame() {
+            playSound('start');
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('score-display').style.display = 'block';
+            resetGameLogic();
+            isGameRunning = true;
+            lastTime = performance.now();
+            if (animationId) cancelAnimationFrame(animationId);
+            requestAnimationFrame(animate);
+        }
+
+        function resetGame() {
+            document.getElementById('game-over-screen').style.display = 'none';
+            document.getElementById('score-display').style.display = 'block';
+            resetGameLogic();
+            isGameRunning = true;
+            lastTime = performance.now();
+            if (animationId) cancelAnimationFrame(animationId);
+            requestAnimationFrame(animate);
+        }
+
+        function resetGameLogic() {
+            score = 0;
+            document.getElementById('score-display').innerText = score;
+            
+            panda.position.set(0, 3, 0); 
+            panda.rotation.set(0, 0, 0);
+            playerVelocityY = 0;
+            isGrounded = false;
+            worldSpeed = PHYSICS.RUN_SPEED;
+
+            branches.forEach(b => scene.remove(b));
+            branches = [];
+
+            nextBranchX = 0;
+            lastBranchHeight = -1;
+            
+            spawnBranch(10, -1, true); 
+            for(let i=0; i<6; i++) {
+                spawnNextBranch(true);
+            }
+        }
+
+        function spawnBranch(length, height, skipFadeIn = false) {
+            const spawnX = nextBranchX; 
+            const branch = createLog(spawnX + length/2, height, 0, length);
+            if (skipFadeIn) {
+                branch.userData.opacity = 1;
+                branch.userData.fadeInComplete = true;
+                branch.userData.materials.forEach(mat => {
+                    mat.opacity = 1;
+                });
+            }
+            branches.push(branch);
+            nextBranchX += length;
+        }
+
+        function spawnNextBranch(skipFadeIn = false) {
+            const difficulty = Math.min(score / 60, 1);
+            
+            const minGap = 2.5 + difficulty * 2.0;
+            const maxGap = 5 + difficulty * 3.0;
+            const gap = Math.random() * (maxGap - minGap) + minGap;
+
+            const minLen = 3.5;
+            const maxLen = 5.5 - difficulty * 2
+            const length = Math.random() * (maxLen - minLen) + minLen;
+
+            const maxDiff = 4.5 + difficulty * 1.8;
+            let height = lastBranchHeight + (Math.random() * maxDiff * 2 - maxDiff);
+            height = Math.max(-5.5, Math.min(6.5, height));
+
+            nextBranchX += gap;
+            
+            spawnBranch(length, height, skipFadeIn);
+            lastBranchHeight = height;
+        }
+
+        function handleInput() {
+            if (!isGameRunning) return;
+
+            if (isGrounded) {
+                playerVelocityY = PHYSICS.JUMP_FORCE;
+                isGrounded = false;
+                jumpCount = 1;
+                playSound('jump');
+                squashAnimation();
+            } else if (jumpCount < 2) {
+                playerVelocityY = PHYSICS.DOUBLE_JUMP_FORCE;
+                jumpCount = 2;
+                playSound('jump2');
+                createParticles(panda.position.clone(), 5);
+            }
+        }
+
+        function squashAnimation() {
+            panda.scale.set(1.2, 0.8, 1.2);
+            setTimeout(() => {
+                panda.scale.set(1, 1, 1);
+            }, 100);
+        }
+
+        function createParticles(pos, count) {
+            const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+            for(let i=0; i<count; i++) {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(pos);
+                mesh.position.x += (Math.random() - 0.5);
+                mesh.position.y -= 0.5;
+                
+                mesh.userData = {
+                    vel: new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.2,
+                        Math.random() * 0.2,
+                        (Math.random() - 0.5) * 0.2
+                    ),
+                    life: 1.0
+                };
+                scene.add(mesh);
+                particles.push(mesh);
+            }
+        }
+
+        function updateParticles() {
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.position.add(p.userData.vel);
+                p.userData.life -= 0.05;
+                p.scale.setScalar(p.userData.life);
+                
+                if(p.userData.life <= 0) {
+                    scene.remove(p);
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function checkCollision() {
+            const feetY = panda.position.y;
+            
+            let onAnyGround = false;
+            let targetGroundHeight = -999;
+
+            for (let branch of branches) {
+                const halfWidth = branch.userData.width / 2;
+                const bLeft = branch.position.x - halfWidth;
+                const bRight = branch.position.x + halfWidth;
+                // More generous horizontal tolerance to prevent edge false-fall detection
+                if (0 >= bLeft - 0.5 && 0 <= bRight + 1) {
+                    
+                    const platformSurfaceY = branch.position.y + branch.userData.radius * 0.85;
+                    
+                    if (playerVelocityY <= 0) {
+                         // More generous vertical tolerance for landing
+                         if (feetY < platformSurfaceY + 1.5 && feetY > platformSurfaceY - 1.5) {
+                             onAnyGround = true;
+                             targetGroundHeight = platformSurfaceY;
+                         }
+                    }
+                }
+                
+                if (bRight < -1.5 && !branch.userData.passed) {
+                    score++;
+                    document.getElementById('score-display').innerText = score;
+                    branch.userData.passed = true;
+                    playSound('score');
+                    if (worldSpeed < 0.55) worldSpeed += 0.004;
+                }
+            }
+
+            if (onAnyGround) {
+                if (!isGrounded) {
+                    isGrounded = true;
+                    jumpCount = 0;
+                    createParticles(panda.position.clone(), 3);
+                }
+                panda.position.y = targetGroundHeight;
+                playerVelocityY = 0;
+            } else {
+                isGrounded = false;
+            }
+        }
+
+        function gameOver() {
+            isGameRunning = false;
+            playSound('crash');
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('game-over-screen').style.display = 'flex';
+            document.getElementById('score-display').style.display = 'none';
+            if (animationId) cancelAnimationFrame(animationId);
+        }
+
+        function animate(time) {
+            animationId = requestAnimationFrame(animate);
+
+            if (!isGameRunning) return;
+            if (!time) time = performance.now();
+            
+            const dt = (time - lastTime) / 1000;
+            lastTime = time;
+            
+            if (dt > 0.1) return; 
+
+            playerVelocityY += PHYSICS.GRAVITY;
+            panda.position.y += playerVelocityY * 0.05;
+
+            let rightmostX = -999;
+            const toRemove = [];
+
+            branches.forEach(b => {
+                b.position.x -= worldSpeed;
+                const rightEdge = b.position.x + b.userData.width/2;
+                if (rightEdge > rightmostX) rightmostX = rightEdge;
+                
+                // Fade in over 1 second (assuming ~60fps, worldSpeed ~ 0.22-0.55)
+                if (!b.userData.fadeInComplete) {
+                    b.userData.opacity += 0.016; // ~1 second at 60fps
+                    if (b.userData.opacity >= 1) {
+                        b.userData.opacity = 1;
+                        b.userData.fadeInComplete = true;
+                    }
+                    // Apply opacity to all materials
+                    b.userData.materials.forEach(mat => {
+                        mat.opacity = b.userData.opacity;
+                    });
+                }
+                
+                // Fade out 1 second before removal (when x reaches ~ -19)
+                // Distance traveled in 1 sec = worldSpeed * 60fps = ~13-33 units
+                // Start fading at distance that takes ~1 sec to reach -20
+                const fadeStartX = -20 + (worldSpeed * 60);
+                if (b.position.x < fadeStartX && b.userData.fadeInComplete) {
+                    const fadeProgress = (b.position.x - (-20)) / (fadeStartX - (-20));
+                    b.userData.opacity = Math.max(0, fadeProgress);
+                    b.userData.materials.forEach(mat => {
+                        mat.opacity = b.userData.opacity;
+                    });
+                }
+                
+                if (b.position.x < -20) toRemove.push(b);
+            });
+
+            toRemove.forEach(b => {
+                scene.remove(b);
+                branches = branches.filter(br => br !== b);
+            });
+
+            nextBranchX -= worldSpeed;
+
+            if (groundTexture) {
+                groundTexture.offset.x += worldSpeed * 0.001; 
+            }
+            
+            // Update animated water ripples
+            updateWaterRipples(time);
+
+            // Move Trees Individually
+            trees.forEach(tree => {
+                tree.position.x -= worldSpeed * 0.001 * 250; // Match ground texture movement (0.001 * 250 world units)
+                
+                // Respawn if off screen left
+                if (tree.position.x < -150) {
+                    let newX = 150 + Math.random() * 50;
+                    
+                    // Re-run river collision check for new spawn
+                    let safeZ = false;
+                    let newZ = 0;
+                    let attempts = 0;
+                    
+                    // Get approximate tree size (stored in tree children)
+                    const leavesSize = tree.children[1].geometry.parameters.width; // leaves are child[1]
+                    const treeRadius = leavesSize / 2;
+                    
+                    while(!safeZ && attempts < 10) {
+                        attempts++;
+                        newZ = (Math.random() - 0.5) * 300; // Wide spread
+                        
+                        // River Check - account for full tree extent
+                        const riverZ = getRiverZ(newX);
+                        
+                        if (Math.abs(newZ - riverZ) >= (RIVER_AVOID_RADIUS + treeRadius)) {
+                            safeZ = true;
+                        }
+                    }
+                    
+                    tree.position.x = newX;
+                    tree.position.z = newZ;
+                    tree.rotation.y = Math.random() * Math.PI * 2;
+                }
+            });
+            
+            // Move Clouds Individually
+            clouds.forEach(cloud => {
+                cloud.position.x -= worldSpeed * SETTINGS.CLOUD_SPEED_FACTOR;
+                
+                // Set opacity based on cluster height relative to panda
+                const targetOpacity = cloud.position.y <= panda.position.y ? 1 : 1;
+                cloud.children.forEach(puff => {
+                    puff.material.opacity = targetOpacity;
+                });
+                
+                if (cloud.position.x < -100) {
+                    cloud.position.x = 100 + Math.random() * 50;
+                    
+                    if (cloud.userData.isHighCloud) {
+                        // High clouds respawn
+                        cloud.position.z = (Math.random() - 0.5) * 60;
+                        cloud.position.y = (Math.random() - 0.5) * 20;
+                    } else if (Math.random() > 0.5) {
+                        // Central
+                        cloud.position.z = (Math.random() * 10) - 5;
+                    } else {
+                        // Peripheral
+                        let z = (Math.random() * 20) + 5;
+                        if (Math.random() > 0.5) z *= -1;
+                        cloud.position.z = z;
+                    }
+                }
+            });
+
+            if (rightmostX < 35) {
+                spawnNextBranch();
+            }
+
+            checkCollision();
+
+            if (panda.position.y < -15) {
+                gameOver();
+                return;
+            }
+
+            if (isGrounded) {
+                const runCycle = time * 0.015;
+                panda.rotation.z = 0; 
+                panda.position.y += Math.sin(runCycle*2) * 0.03; 
+                
+                panda.legL.rotation.z = Math.sin(runCycle) * 0.8;
+                panda.legR.rotation.z = Math.cos(runCycle) * 0.8;
+                panda.armL.rotation.z = Math.cos(runCycle) * 0.8;
+                panda.armR.rotation.z = Math.sin(runCycle) * 0.8;
+            } else {
+                panda.legL.rotation.z = 0.5;
+                panda.legR.rotation.z = -0.2;
+                panda.armL.rotation.z = 2.5; 
+                panda.armR.rotation.z = 2.5;
+                
+                if (jumpCount === 2) {
+                    panda.rotation.z -= 0.15;
+                }
+            }
+
+            updateParticles();
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function playSound(type) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'jump') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.linearRampToValueAtTime(600, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'jump2') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.linearRampToValueAtTime(900, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'score') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.setValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'crash') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'start') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.linearRampToValueAtTime(880, now + 0.3);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+        }
+
+        init();
+
+    </script>
+</body>
+</html>

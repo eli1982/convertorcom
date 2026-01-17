@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lumina: The Prism of Truth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap');
+
+        :root {
+            --neon-cyan: #00ffff;
+            --neon-red: #ff3333;
+            --glass-bg: rgba(20, 20, 30, 0.95);
+        }
+
+        body {
+            background-color: #050505;
+            color: #e0e0e0;
+            font-family: 'Rajdhani', sans-serif;
+            overflow-x: hidden;
+            overflow-y: auto;
+            touch-action: pan-y;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        h1, h2, h3 {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        #game-wrapper {
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 1/1;
+            position: relative;
+            margin: 0 auto;
+        }
+
+        canvas {
+            background: radial-gradient(circle at center, #1a1a2e 0%, #000000 100%);
+            border: 2px solid #333;
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 200, 255, 0.2);
+            border-radius: 12px;
+        }
+
+        .inventory-item {
+            transition: all 0.1s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .inventory-item:active {
+            transform: scale(0.95);
+        }
+
+        .inventory-item.selected {
+            background: rgba(0, 255, 255, 0.15);
+            border: 1px solid var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+        }
+
+        #trash-zone {
+            position: fixed;
+            bottom: -80px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 50, 50, 0.3);
+            border: 2px dashed var(--neon-red);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        #trash-zone.visible {
+            bottom: 20px;
+        }
+
+        #trash-zone.hover {
+            background: rgba(255, 50, 50, 0.6);
+            transform: translateX(-50%) scale(1.2);
+            box-shadow: 0 0 20px var(--neon-red);
+        }
+
+        #trash-zone i {
+            font-size: 28px;
+            color: var(--neon-red);
+        }
+
+        .dragging-item {
+            position: fixed;
+            pointer-events: none;
+            z-index: 99;
+            opacity: 0.8;
+        }
+
+        .glowing-text {
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.7);
+        }
+
+        #victory-modal {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1s ease-in-out; 
+        }
+        #victory-modal.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="min-h-screen w-screen flex flex-col">
+
+    <!-- Trash Zone for Drag-to-Delete -->
+    <div id="trash-zone">
+        <i class="fas fa-trash"></i>
+    </div>
+
+    <!-- Header -->
+    <nav class="flex justify-between items-center px-4 py-2 bg-black/80 border-b border-gray-800 shrink-0 sticky top-0 z-20">
+        <div>
+            <h1 class="text-xl md:text-2xl font-bold text-cyan-400 glowing-text tracking-widest">LUMINA</h1>
+        </div>
+        <div id="header-level" class="glass-panel px-4 py-1 text-sm font-bold text-cyan-400">Level 1</div>
+        <div class="flex gap-2">
+            <button onclick="game.forceWin()" class="glass-panel w-10 h-10 flex items-center justify-center active:bg-green-900/50 text-green-400 border-green-500/30" title="Dev: Instant Win"><i class="fas fa-check"></i></button>
+            <button onclick="game.toggleHint()" class="glass-panel w-10 h-10 flex items-center justify-center active:bg-yellow-900/50 text-yellow-300 border-yellow-500/30"><i class="fas fa-lightbulb"></i></button>
+            <button onclick="game.resetLevel()" class="glass-panel w-10 h-10 flex items-center justify-center active:bg-cyan-900/50"><i class="fas fa-undo"></i></button>
+            <button onclick="game.toggleGrimoire()" class="glass-panel w-10 h-10 flex items-center justify-center active:bg-purple-900/50"><i class="fas fa-book"></i></button>
+        </div>
+    </nav>
+
+    <!-- Main Game Layout -->
+    <main class="flex-grow flex flex-col md:flex-row items-center md:items-start justify-center p-4 gap-4 w-full max-w-7xl mx-auto">
+        <!-- Game Board -->
+        <div class="order-1 md:order-2 w-full max-w-[600px] flex-shrink-0">
+            <div id="game-wrapper">
+                <canvas id="gameCanvas" width="600" height="600"></canvas>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="order-2 md:order-1 w-full md:w-80 flex flex-col gap-3">
+            <div class="glass-panel p-4 w-full">
+                <div class="flex justify-between items-center mb-1 border-b border-gray-700 pb-1">
+                    <h3 class="text-yellow-200 font-bold text-sm">Mission</h3>
+                </div>
+                <p id="level-objective" class="text-sm text-gray-300 leading-snug">Loading...</p>
+            </div>
+
+            <div class="glass-panel p-4 w-full flex-col gap-3 flex">
+                <div class="flex justify-between items-end">
+                    <h3 class="text-cyan-200 text-xs uppercase tracking-wider font-bold">Toolkit</h3>
+                    <span id="status-text" class="text-xs font-bold h-4 text-gray-400">Select Item</span>
+                </div>
+                <div id="inventory-grid" class="grid grid-cols-4 md:grid-cols-2 gap-2"></div>
+                <div class="pt-2 border-t border-gray-700 flex flex-col gap-1 text-[10px] text-gray-400">
+                    <div class="flex items-center gap-2"><i class="fas fa-hand-pointer text-cyan-400"></i> <span>Tap Grid to <b>Place</b></span></div>
+                    <div class="flex items-center gap-2"><i class="fas fa-sync text-cyan-400"></i> <span>Tap Item to <b>Rotate</b></span></div>
+                    <div class="flex items-center gap-2"><i class="fas fa-palette text-pink-400"></i> <span>Tap Filter to <b>Change Color</b></span></div>
+                    <div class="flex items-center gap-2"><i class="fas fa-hand-rock text-red-400"></i> <span>Hold &amp; Drag to <b>Trash</b> to remove</span></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div id="victory-modal" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-black/90 backdrop-blur-sm hidden">
+        <div class="glass-panel p-8 max-w-sm w-full text-center border-2 border-cyan-500 shadow-[0_0_50px_rgba(0,255,255,0.3)] transform transition-all">
+            <i class="fas fa-lightbulb text-4xl text-cyan-200 mb-4 animate-pulse"></i>
+            <h2 class="text-3xl text-white font-bold mb-2 tracking-widest">ILLUMINATED</h2>
+            <div class="h-px bg-gradient-to-r from-transparent via-cyan-500 to-transparent w-full my-4"></div>
+            <p id="victory-concept-title" class="text-lg text-cyan-300 font-bold mb-1">Concept</p>
+            <p id="victory-concept-desc" class="text-sm text-gray-300 mb-6 italic">Description</p>
+            <button onclick="game.nextLevel()" class="w-full bg-cyan-700 hover:bg-cyan-600 text-white py-3 rounded font-bold tracking-wider shadow-lg">NEXT LEVEL</button>
+        </div>
+    </div>
+
+    <div id="grimoire-modal" class="fixed inset-0 z-50 hidden flex-col p-4 md:p-10 bg-black/95 backdrop-blur-md overflow-hidden">
+        <div class="glass-panel flex flex-col w-full h-full max-w-3xl mx-auto shadow-2xl overflow-hidden">
+            <div class="flex justify-between items-center p-4 border-b border-gray-700 bg-black/40 shrink-0">
+                <h2 class="text-xl text-purple-400 font-bold"><i class="fas fa-book-open mr-2"></i>Photonic Grimoire</h2>
+                <button onclick="game.toggleGrimoire()" class="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="grimoire-list" class="flex-grow overflow-y-auto p-4 space-y-3"></div>
+        </div>
+    </div>
+
+    <script>
+        const TILE_SIZE = 50;
+        const GRID_W = 12;
+        const GRID_H = 12;
+        
+        const DIRS = { UP: 0, RIGHT: 1, DOWN: 2, LEFT: 3 };
+        const TYPES = { EMPTY: 0, WALL: 1, SOURCE: 2, TARGET: 3, MIRROR: 4, PRISM: 5, FILTER: 6, SENSOR: 7, GATE: 8, BLOCK_GLASS: 9, SPLITTER: 10, COMBINER: 11 };
+        const COLORS = { 
+            WHITE: {str: '#ffffff'}, RED: {str: '#ff3232'}, GREEN: {str: '#32ff32'}, 
+            BLUE: {str: '#3264ff'}, CYAN: {str: '#32ffff'}, YELLOW: {str: '#ffff32'}, MAGENTA: {str: '#ff32ff'} 
+        };
+        
+        const COLOR_COMPS = {
+            'WHITE': ['RED', 'GREEN', 'BLUE'],
+            'YELLOW': ['RED', 'GREEN'],
+            'CYAN': ['GREEN', 'BLUE'],
+            'MAGENTA': ['RED', 'BLUE'],
+            'RED': ['RED'], 'GREEN': ['GREEN'], 'BLUE': ['BLUE']
+        };
+
+        const AudioSys = {
+            ctx: null,
+            init: function() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
+            tone: function(f, t, d, v=0.1) {
+                if(!this.ctx) this.init();
+                if(this.ctx.state === 'suspended') this.ctx.resume();
+                const o = this.ctx.createOscillator();
+                const g = this.ctx.createGain();
+                o.type = t; o.frequency.setValueAtTime(f, this.ctx.currentTime);
+                g.gain.setValueAtTime(v, this.ctx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + d);
+                o.connect(g); g.connect(this.ctx.destination);
+                o.start(); o.stop(this.ctx.currentTime + d);
+            },
+            click: function() { this.tone(800, 'sine', 0.1); },
+            place: function() { this.tone(600, 'sine', 0.1); },
+            delete: function() { this.tone(150, 'sawtooth', 0.2, 0.15); },
+            mode: function() { this.tone(400, 'square', 0.1); },
+            error: function() { this.tone(100, 'square', 0.2, 0.1); },
+            charge: function() { this.tone(300, 'triangle', 1.0, 0.05); }, 
+            win: function() { 
+                this.init();
+                setTimeout(() => this.tone(440, 'sine', 0.4), 0);
+                setTimeout(() => this.tone(554, 'sine', 0.4), 100);
+                setTimeout(() => this.tone(659, 'sine', 0.6), 200);
+            }
+        };
+
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.grid = [];
+                this.beams = [];
+                this.particles = [];
+                this.inventory = {};
+                this.selection = null;
+                this.levelIndex = 0;
+                this.showingHint = false;
+                this.victoryStartTime = 0; 
+                this.levels = this.getLevels();
+                
+                // Load saved progress
+                this.highestLevel = this.loadProgress();
+                
+                // Drag state
+                this.dragState = null;
+                this.longPressTimer = null;
+                this.trashZone = document.getElementById('trash-zone');
+                
+                this.canvas.addEventListener('pointerdown', e => this.onPointerDown(e));
+                this.canvas.addEventListener('pointermove', e => this.onPointerMove(e));
+                this.canvas.addEventListener('pointerup', e => this.onPointerUp(e));
+                this.canvas.addEventListener('contextmenu', e => e.preventDefault());
+                
+                // Document-level listeners for dragging outside canvas
+                document.addEventListener('pointermove', e => {
+                    if (this.dragState) {
+                        e.preventDefault();
+                        this.updateDrag(e);
+                    }
+                });
+                document.addEventListener('pointerup', e => {
+                    if (this.dragState) {
+                        this.endDrag(e);
+                    }
+                });
+
+                // Load last played level or start from beginning
+                const savedLevel = Math.min(this.highestLevel, this.levels.length - 1);
+                this.loadLevel(savedLevel);
+                this.loop();
+            }
+            
+            // Save/Load progress methods
+            loadProgress() {
+                try {
+                    const saved = localStorage.getItem('lumina_progress');
+                    if (saved) {
+                        const data = JSON.parse(saved);
+                        return data.highestLevel || 0;
+                    }
+                } catch (e) {
+                    console.warn('Could not load progress:', e);
+                }
+                return 0;
+            }
+            
+            saveProgress() {
+                try {
+                    const data = {
+                        highestLevel: this.highestLevel,
+                        lastPlayed: Date.now()
+                    };
+                    localStorage.setItem('lumina_progress', JSON.stringify(data));
+                } catch (e) {
+                    console.warn('Could not save progress:', e);
+                }
+            }
+
+            getGridPos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                const x = Math.floor((e.clientX - rect.left) * scaleX / TILE_SIZE);
+                const y = Math.floor((e.clientY - rect.top) * scaleY / TILE_SIZE);
+                return { x, y };
+            }
+
+            onPointerDown(e) {
+                e.preventDefault(); 
+                AudioSys.init();
+                const pos = this.getGridPos(e);
+                if(pos.x < 0 || pos.x >= GRID_W || pos.y < 0 || pos.y >= GRID_H) return;
+                
+                const cell = this.grid[pos.y][pos.x];
+                
+                // Start long press timer for draggable items
+                if (cell.type !== TYPES.EMPTY && !cell.locked) {
+                    this.longPressTimer = setTimeout(() => {
+                        this.startDrag(pos, e);
+                    }, 300); // 300ms long press
+                    this.pendingTapPos = pos;
+                    this.pendingTapEvent = e;
+                } else {
+                    this.handleTap(pos);
+                }
+            }
+            
+            onPointerMove(e) {
+                if (this.dragState) {
+                    e.preventDefault();
+                    this.updateDrag(e);
+                } else if (this.longPressTimer) {
+                    // Cancel long press if moved too much
+                    const pos = this.getGridPos(e);
+                    if (this.pendingTapPos && (pos.x !== this.pendingTapPos.x || pos.y !== this.pendingTapPos.y)) {
+                        clearTimeout(this.longPressTimer);
+                        this.longPressTimer = null;
+                    }
+                }
+            }
+            
+            onPointerUp(e) {
+                if (this.longPressTimer) {
+                    clearTimeout(this.longPressTimer);
+                    this.longPressTimer = null;
+                    // It was a short tap, handle as normal tap
+                    if (this.pendingTapPos) {
+                        this.handleTap(this.pendingTapPos);
+                    }
+                }
+                
+                if (this.dragState) {
+                    this.endDrag(e);
+                }
+                
+                this.pendingTapPos = null;
+            }
+            
+            startDrag(pos, e) {
+                const cell = this.grid[pos.y][pos.x];
+                AudioSys.mode();
+                
+                // Store drag info
+                this.dragState = {
+                    originPos: pos,
+                    type: cell.type,
+                    dir: cell.dir,
+                    color: cell.color,
+                    clientX: e.clientX,
+                    clientY: e.clientY
+                };
+                
+                // Remove from grid temporarily
+                cell.type = TYPES.EMPTY;
+                cell.dir = DIRS.UP;
+                cell.color = null;
+                
+                // Show trash zone
+                this.trashZone.classList.add('visible');
+                
+                // Create visual drag element
+                this.createDragVisual(e);
+            }
+            
+            createDragVisual(e) {
+                const visual = document.createElement('div');
+                visual.id = 'drag-visual';
+                visual.className = 'dragging-item glass-panel';
+                visual.style.width = '50px';
+                visual.style.height = '50px';
+                visual.style.left = (e.clientX - 25) + 'px';
+                visual.style.top = (e.clientY - 25) + 'px';
+                
+                const iconMap = { [TYPES.MIRROR]: 'fa-slash', [TYPES.PRISM]: 'fa-caret-up', [TYPES.FILTER]: 'fa-filter', [TYPES.SPLITTER]: 'fa-columns', [TYPES.BLOCK_GLASS]: 'fa-square', [TYPES.COMBINER]: 'fa-compress-arrows-alt' };
+                const icon = iconMap[this.dragState.type] || 'fa-question';
+                let iconColor = 'text-cyan-300';
+                if (this.dragState.type === TYPES.FILTER && this.dragState.color) {
+                    iconColor = '';
+                    visual.innerHTML = `<i class="fas ${icon}" style="color: ${COLORS[this.dragState.color].str}; font-size: 24px;"></i>`;
+                } else {
+                    visual.innerHTML = `<i class="fas ${icon} ${iconColor}" style="font-size: 24px;"></i>`;
+                }
+                visual.style.display = 'flex';
+                visual.style.alignItems = 'center';
+                visual.style.justifyContent = 'center';
+                
+                document.body.appendChild(visual);
+            }
+            
+            updateDrag(e) {
+                const visual = document.getElementById('drag-visual');
+                if (visual) {
+                    visual.style.left = (e.clientX - 25) + 'px';
+                    visual.style.top = (e.clientY - 25) + 'px';
+                }
+                
+                // Check if over trash zone
+                const trashRect = this.trashZone.getBoundingClientRect();
+                const overTrash = e.clientX >= trashRect.left && e.clientX <= trashRect.right &&
+                                  e.clientY >= trashRect.top && e.clientY <= trashRect.bottom;
+                
+                if (overTrash) {
+                    this.trashZone.classList.add('hover');
+                } else {
+                    this.trashZone.classList.remove('hover');
+                }
+            }
+            
+            endDrag(e) {
+                // Remove visual
+                const visual = document.getElementById('drag-visual');
+                if (visual) visual.remove();
+                
+                // Hide trash zone
+                this.trashZone.classList.remove('visible', 'hover');
+                
+                // Check if dropped on trash
+                const trashRect = this.trashZone.getBoundingClientRect();
+                const overTrash = e.clientX >= trashRect.left && e.clientX <= trashRect.right &&
+                                  e.clientY >= trashRect.top && e.clientY <= trashRect.bottom;
+                
+                if (overTrash) {
+                    // Delete the item - return to inventory
+                    this.inventory[this.dragState.type] = (this.inventory[this.dragState.type] || 0) + 1;
+                    AudioSys.delete();
+                    this.updateUI();
+                } else {
+                    // Check if dropped on a valid grid position
+                    const pos = this.getGridPos(e);
+                    if (pos.x >= 0 && pos.x < GRID_W && pos.y >= 0 && pos.y < GRID_H) {
+                        const cell = this.grid[pos.y][pos.x];
+                        if (cell.type === TYPES.EMPTY) {
+                            // Place at new position
+                            cell.type = this.dragState.type;
+                            cell.dir = this.dragState.dir;
+                            cell.color = this.dragState.color;
+                            AudioSys.place();
+                        } else {
+                            // Position occupied, return to original
+                            this.returnToOrigin();
+                        }
+                    } else {
+                        // Out of bounds, return to original
+                        this.returnToOrigin();
+                    }
+                }
+                
+                this.dragState = null;
+                this.longPressTimer = null;
+                this.pendingTapPos = null;
+            }
+            
+            returnToOrigin() {
+                const cell = this.grid[this.dragState.originPos.y][this.dragState.originPos.x];
+                cell.type = this.dragState.type;
+                cell.dir = this.dragState.dir;
+                cell.color = this.dragState.color;
+            }
+
+            handleTap(pos) {
+                const cell = this.grid[pos.y][pos.x];
+
+                // NORMAL MODE
+                if(cell.type !== TYPES.EMPTY && !cell.locked) {
+                    // Special Case: Tap Filter to Cycle Color
+                    if (cell.type === TYPES.FILTER) {
+                        const colors = ['RED', 'GREEN', 'BLUE', 'CYAN', 'MAGENTA', 'YELLOW'];
+                        const idx = colors.indexOf(cell.color);
+                        cell.color = colors[(idx + 1) % colors.length];
+                        AudioSys.click();
+                        return;
+                    }
+                    // Rotate others
+                    cell.dir = (cell.dir + 1) % 4;
+                    AudioSys.click();
+                    return;
+                }
+
+                if(cell.type === TYPES.EMPTY && this.selection) {
+                    if(this.inventory[this.selection] > 0) {
+                        cell.type = this.selection;
+                        cell.dir = DIRS.UP;
+                        if(this.selection === TYPES.FILTER) cell.color = 'RED'; 
+                        this.inventory[this.selection]--;
+                        if(this.inventory[this.selection] <= 0) this.setSelection(null);
+                        else this.updateUI(); 
+                        AudioSys.place();
+                        this.showingHint = false;
+                    } else {
+                        AudioSys.error();
+                    }
+                }
+            }
+
+            tryDelete(pos) {
+                const cell = this.grid[pos.y][pos.x];
+                if(cell.type !== TYPES.EMPTY && !cell.locked) {
+                    this.inventory[cell.type] = (this.inventory[cell.type] || 0) + 1;
+                    cell.type = TYPES.EMPTY;
+                    cell.dir = DIRS.UP;
+                    this.updateUI();
+                    AudioSys.delete();
+                }
+            }
+
+            setSelection(type) {
+                this.selection = type;
+                if (type !== null) this.deleteMode = false; 
+                this.updateUI();
+            }
+
+            updateUI() {
+                this.updateInventoryUI();
+                this.updateStatusText();
+            }
+
+            updateStatusText() {
+                const el = document.getElementById('status-text');
+                if (this.selection) {
+                    const names = { [TYPES.MIRROR]: 'Mirror', [TYPES.PRISM]: 'Prism', [TYPES.FILTER]: 'Filter', [TYPES.SPLITTER]: 'Splitter', [TYPES.BLOCK_GLASS]: 'Glass', [TYPES.COMBINER]: 'Combiner' };
+                    el.innerText = `Placing: ${names[this.selection]}`;
+                    el.style.color = '#00ffff';
+                } else {
+                    el.innerText = "Select Item";
+                    el.style.color = '#9ca3af';
+                }
+            }
+
+            getLevels() {
+                return [
+                    {
+                        title: "1. Reflection", concept: "Law of Reflection",
+                        desc: "Light reflects off surfaces at the same angle it hits them.",
+                        objective: "Place mirrors to bounce the light to the target.",
+                        inventory: { [TYPES.MIRROR]: 2 },
+                        layout: [{x:2,y:5,type:2,dir:1},{x:9,y:8,type:3,dir:0,color:'WHITE'},{x:5,y:5,type:1},{x:5,y:6,type:1},{x:5,y:7,type:1}],
+                        solution: [{x:4,y:5,type:4,dir:1},{x:4,y:8,type:4,dir:0}]
+                    },
+                    {
+                        title: "2. Absorption", concept: "Selective Absorption",
+                        desc: "Filters absorb all colors except the one they match. Tap a filter to change its color.",
+                        objective: "Turn the White beam Red using a filter.",
+                        inventory: { [TYPES.MIRROR]: 3, [TYPES.FILTER]: 1 },
+                        layout: [{x:1,y:1,type:2,dir:2},{x:10,y:10,type:3,dir:3,color:'RED'},{x:1,y:6,type:1},{x:10,y:5,type:1}],
+                        solution: [{x:1,y:5,type:4,dir:0},{x:9,y:5,type:4,dir:1},{x:9,y:10,type:4,dir:0},{x:1,y:2,type:6,color:'RED'}]
+                    },
+                    {
+                        title: "3. Dispersion", concept: "Prismatic Dispersion",
+                        desc: "Prisms split white light into its component colors (Red, Green, Blue).",
+                        objective: "Split the beam to hit both Red and Blue targets.",
+                        inventory: { [TYPES.PRISM]: 1, [TYPES.MIRROR]: 3 },
+                        layout: [{x:0,y:5,type:2,dir:1},{x:11,y:2,type:3,dir:3,color:'RED'},{x:11,y:8,type:3,dir:3,color:'BLUE'},{x:6,y:2,type:1},{x:6,y:8,type:1}],
+                        solution: [{x:5,y:5,type:5,dir:0}]
+                    },
+                    {
+                        title: "4. Photoelectricity", concept: "Photoelectric Effect",
+                        desc: "Light can trigger electrical systems. Light up the Sensor to open the Gate.",
+                        objective: "Hit the Sensor to open the Gate for the Target.",
+                        inventory: { [TYPES.SPLITTER]: 1 },
+                        layout: [{x:1,y:5,type:2,dir:1},{x:10,y:5,type:3,dir:3,color:'WHITE'},{x:8,y:5,type:8,active:false},{x:6,y:9,type:7,dir:0,color:'WHITE'},{x:5,y:2,type:1}],
+                        solution: [{x:4,y:5,type:10,dir:1},{x:4,y:9,type:4,dir:0}]
+                    },
+                    {
+                        title: "5. Refraction", concept: "Refraction",
+                        desc: "Light bends when passing through glass, shifting its path.",
+                        objective: "Use Glass Blocks to shift the beam around the wall.",
+                        inventory: { [TYPES.BLOCK_GLASS]: 2, [TYPES.MIRROR]: 2 },
+                        layout: [{x:2,y:2,type:2,dir:1},{x:9,y:3,type:3,dir:3,color:'WHITE'},{x:6,y:2,type:1},{x:6,y:1,type:1},{x:6,y:3,type:1}],
+                        solution: [{x:3,y:2,type:9},{x:4,y:3,type:9}]
+                    },
+                    {
+                        title: "6. Beam Splitting", concept: "Beam Intensity",
+                        desc: "A Splitter divides one beam into two separate paths.",
+                        objective: "Hit both white targets with one source.",
+                        inventory: { [TYPES.SPLITTER]: 1, [TYPES.MIRROR]: 2 },
+                        layout: [{x:2,y:6,type:2,dir:1}, {x:9,y:2,type:3,color:'WHITE'}, {x:9,y:10,type:3,color:'WHITE'}],
+                        solution: [{x:5,y:6,type:10,dir:0}, {x:5,y:2,type:4,dir:1}, {x:5,y:10,type:4,dir:0}]
+                    },
+                    {
+                        title: "7. Optical Fiber", concept: "Total Internal Reflection",
+                        desc: "Light can be guided over long distances by reflecting inside a medium.",
+                        objective: "Guide the light through the narrow corridor.",
+                        inventory: { [TYPES.MIRROR]: 6 },
+                        layout: [
+                            {x:1,y:1,type:2,dir:2}, {x:10,y:10,type:3,color:'WHITE'}, 
+                            // Walls forming tube
+                            {x:2,y:1,type:1}, {x:2,y:2,type:1}, {x:2,y:3,type:1},
+                            {x:0,y:3,type:1}, {x:1,y:4,type:1}, {x:2,y:4,type:1}, {x:3,y:4,type:1},
+                            {x:4,y:2,type:1}, {x:4,y:3,type:1}, {x:4,y:4,type:1}, {x:4,y:5,type:1}, {x:4,y:6,type:1},
+                            {x:2,y:6,type:1}, {x:3,y:6,type:1}, 
+                            {x:6,y:4,type:1}, {x:6,y:5,type:1}, {x:6,y:6,type:1}, {x:6,y:7,type:1}, {x:6,y:8,type:1},
+                            {x:4,y:8,type:1}, {x:5,y:8,type:1},
+                            {x:8,y:6,type:1}, {x:8,y:7,type:1}, {x:8,y:8,type:1}, {x:8,y:9,type:1}, {x:8,y:10,type:1},
+                            {x:9,y:10,type:1}, {x:11,y:10,type:1}
+                        ],
+                        solution: [{x:1,y:3,type:4,dir:1}, {x:3,y:3,type:4,dir:0}, {x:3,y:5,type:4,dir:1}, {x:5,y:5,type:4,dir:0}, {x:5,y:7,type:4,dir:1}, {x:7,y:7,type:4,dir:0}, {x:7,y:9,type:4,dir:1}, {x:10,y:9,type:4,dir:0}]
+                    },
+                    {
+                        title: "8. Subtractive Color", concept: "Subtractive Mixing",
+                        desc: "Filters subtract colors from light. Magenta (R+B) blocks Green, letting only Blue pass from Cyan (G+B).",
+                        objective: "Use the Magenta filter to turn Cyan light into Blue.",
+                        inventory: { [TYPES.FILTER]: 1 },
+                        layout: [{x:2,y:6,type:2,dir:1,color:'CYAN'}, {x:10,y:6,type:3,color:'BLUE'}],
+                        solution: [{x:5,y:6,type:6,color:'MAGENTA'}]
+                    },
+                    {
+                        title: "9. Waveguide", concept: "Total Internal Reflection",
+                        desc: "Glass blocks guide light by shifting its path. Chain them to create a waveguide.",
+                        objective: "Use glass blocks to guide light around the walls to the target.",
+                        inventory: { [TYPES.BLOCK_GLASS]: 4, [TYPES.MIRROR]: 2 },
+                        layout: [{x:1,y:3,type:2,dir:1}, {x:10,y:9,type:3,color:'WHITE'}, {x:4,y:3,type:1}, {x:4,y:4,type:1}, {x:4,y:5,type:1}, {x:7,y:6,type:1}, {x:7,y:7,type:1}, {x:7,y:8,type:1}],
+                        solution: [{x:2,y:3,type:9}, {x:3,y:4,type:9}, {x:5,y:4,type:4,dir:0}, {x:5,y:6,type:4,dir:1}, {x:6,y:6,type:9}, {x:8,y:7,type:9}]
+                    },
+                    {
+                        title: "10. Logic Gate: OR", concept: "Optical Computing",
+                        desc: "The Gate will open if ANY sensor is active.",
+                        objective: "Activate either sensor to pass the gate.",
+                        inventory: { [TYPES.SPLITTER]: 1, [TYPES.MIRROR]: 4 },
+                        layout: [{x:1,y:4,type:2,dir:1}, {x:10,y:8,type:3,color:'WHITE'}, {x:8,y:8,type:8,active:false}, {x:5,y:2,type:7,color:'WHITE'}, {x:5,y:10,type:7,color:'WHITE'}],
+                        solution: [{x:3,y:4,type:10,dir:0}, {x:3,y:8,type:4,dir:1}, {x:3,y:2,type:4,dir:0}]
+                    },
+                    {
+                        title: "11. Gated Spiral", concept: "Feedback Loop",
+                        desc: "Light must activate sensors to open gates blocking the path.",
+                        objective: "Navigate through the gates by activating the sensors.",
+                        inventory: { [TYPES.SPLITTER]: 1 },
+                        layout: [
+                            {x:1,y:6,type:2,dir:1}, {x:10,y:6,type:3,color:'WHITE'},
+                            {x:6,y:6,type:8,active:false}, // Gate blocking path
+                            {x:4,y:3,type:7,color:'WHITE'} // Sensor to open gate
+                        ],
+                        solution: [{x:3,y:6,type:10,dir:0}, {x:3,y:3,type:4,dir:1}, {x:4,y:3,type:4,dir:0}]
+                    },
+                    {
+                        title: "12. Retroreflector", concept: "Retroreflection",
+                        desc: "A corner reflector sends light back parallel to its source. Split the beam to activate the sensor and hit the target.",
+                        objective: "Use the splitter and sensors to send light back to the target.",
+                        inventory: { [TYPES.SPLITTER]: 1, [TYPES.MIRROR]: 4 },
+                        layout: [
+                            {x:2,y:4,type:2,dir:1}, {x:2,y:8,type:3,color:'WHITE'}, 
+                            {x:6,y:4,type:1}, {x:6,y:5,type:1}, {x:6,y:6,type:1}, {x:6,y:7,type:1}, {x:6,y:8,type:1},
+                            {x:9,y:6,type:7,color:'WHITE'} // Sensor
+                        ],
+                        solution: [{x:4,y:4,type:10,dir:0}, {x:4,y:6,type:4,dir:1}, {x:5,y:2,type:4,dir:1}, {x:8,y:2,type:4,dir:0}, {x:8,y:8,type:4,dir:3}]
+                    },
+                    {
+                        title: "13. Additive Mixing", concept: "RGB Color Model",
+                        desc: "When colored lights combine, they add together: Red + Green = Yellow, Red + Blue = Magenta, Green + Blue = Cyan.",
+                        objective: "Combine Red and Green beams to hit the Yellow target.",
+                        inventory: { [TYPES.COMBINER]: 1, [TYPES.MIRROR]: 3 },
+                        layout: [
+                            {x:1,y:4,type:2,dir:1,color:'RED'}, 
+                            {x:1,y:8,type:2,dir:1,color:'GREEN'}, 
+                            {x:10,y:6,type:3,color:'YELLOW'}
+                        ],
+                        solution: [{x:5,y:4,type:4,dir:0}, {x:5,y:6,type:11,dir:0}, {x:5,y:8,type:4,dir:1}]
+                    },
+                    {
+                        title: "14. Ghost in the Machine", concept: "Transmission",
+                        desc: "Glass can shift light to bypass walls. Use the splitter to hit the sensor and open the gate protecting the target.",
+                        objective: "Shift the beam to activate the sensor and reach the protected target.",
+                        inventory: { [TYPES.SPLITTER]: 1, [TYPES.BLOCK_GLASS]: 2, [TYPES.MIRROR]: 2 },
+                        layout: [
+                            {x:2,y:5,type:2,dir:1}, 
+                            {x:10,y:5,type:3,color:'WHITE'}, 
+                            // Gate protecting target
+                            {x:9,y:5,type:8,active:false},
+                            // Sensor to open gate  
+                            {x:7,y:8,type:7,color:'WHITE'},
+                            // Walls
+                            {x:6,y:5,type:1}
+                        ],
+                        solution: [{x:4,y:5,type:10,dir:0}, {x:4,y:8,type:4,dir:1}, {x:5,y:5,type:9,dir:0}, {x:6,y:6,type:9,dir:0}]
+                    },
+                    {
+                        title: "15. Conservation", concept: "Energy Conservation",
+                        desc: "Split the beam to serve multiple functions.",
+                        objective: "Power 2 sensors to open 2 gates (Simulated logic).",
+                        inventory: { [TYPES.SPLITTER]: 2, [TYPES.MIRROR]: 4 },
+                        layout: [{x:1,y:2,type:2,dir:2}, {x:10,y:10,type:3,color:'WHITE'}, {x:5,y:10,type:8,active:false}, {x:10,y:5,type:7,color:'WHITE'}],
+                        solution: [{x:1,y:5,type:10,dir:1}, {x:1,y:10,type:4,dir:1}, {x:5,y:5,type:4,dir:0}, {x:8,y:5,type:10,dir:0}, {x:8,y:10,type:4,dir:1}]
+                    },
+                    {
+                        title: "16. Chromatic Gateway", concept: "Color-Gated Systems",
+                        desc: "Sensors only respond to specific colors. Split white light, filter it, and use the right colors to unlock gates.",
+                        objective: "Use colored beams to activate sensors and reach both targets.",
+                        inventory: { [TYPES.PRISM]: 1, [TYPES.MIRROR]: 5, [TYPES.FILTER]: 2, [TYPES.SPLITTER]: 1 },
+                        layout: [
+                            {x:1,y:5,type:2,dir:1},
+                            {x:10,y:2,type:3,color:'CYAN'},
+                            {x:10,y:9,type:3,color:'MAGENTA'},
+                            // Gates protecting targets
+                            {x:9,y:2,type:8,active:false},
+                            {x:9,y:9,type:8,active:false},
+                            // Sensors - need specific colors
+                            {x:6,y:0,type:7,color:'BLUE'},
+                            {x:6,y:11,type:7,color:'RED'},
+                            // Walls creating maze
+                            {x:5,y:4,type:1}, {x:5,y:5,type:1}, {x:5,y:6,type:1},
+                            {x:7,y:5,type:1}, {x:8,y:5,type:1}
+                        ],
+                        solution: [{x:3,y:5,type:5,dir:0}, {x:4,y:2,type:4,dir:1}, {x:6,y:2,type:10,dir:0}, {x:4,y:8,type:4,dir:0}, {x:4,y:9,type:6,color:'MAGENTA'}]
+                    },
+                    {
+                        title: "17. Spectrum Synthesis", concept: "Combined Light Systems",
+                        desc: "Split white light, filter individual colors, then recombine them to create new colors for the targets.",
+                        objective: "Create Yellow (R+G) and Cyan (G+B) beams to hit both targets.",
+                        inventory: { [TYPES.PRISM]: 1, [TYPES.COMBINER]: 2, [TYPES.MIRROR]: 6, [TYPES.FILTER]: 1, [TYPES.SPLITTER]: 1 },
+                        layout: [
+                            {x:0,y:5,type:2,dir:1},
+                            {x:11,y:2,type:3,color:'YELLOW'},
+                            {x:11,y:8,type:3,color:'CYAN'},
+                            // Walls to force routing
+                            {x:5,y:3,type:1}, {x:5,y:4,type:1}, {x:5,y:5,type:1}, {x:5,y:6,type:1}, {x:5,y:7,type:1},
+                            {x:8,y:4,type:1}, {x:8,y:5,type:1}, {x:8,y:6,type:1}
+                        ],
+                        solution: [{x:3,y:5,type:5,dir:0}, {x:4,y:2,type:4,dir:1}, {x:4,y:8,type:4,dir:0}, {x:6,y:2,type:11,dir:1}, {x:6,y:8,type:11,dir:1}]
+                    },
+                    {
+                        title: "18. Color Forge", concept: "Light Engineering",
+                        desc: "Split white light into components, then recombine specific colors to create the exact hues needed for each target.",
+                        objective: "Create Magenta (R+B) and Cyan (G+B) from white light.",
+                        inventory: { [TYPES.SPLITTER]: 2, [TYPES.PRISM]: 1, [TYPES.COMBINER]: 2, [TYPES.MIRROR]: 6 },
+                        layout: [
+                            {x:1,y:5,type:2,dir:1},
+                            {x:10,y:2,type:3,color:'MAGENTA'},
+                            {x:10,y:8,type:3,color:'CYAN'},
+                            // Walls to create routing challenge
+                            {x:6,y:4,type:1}, {x:6,y:5,type:1}, {x:6,y:6,type:1}
+                        ],
+                        solution: [{x:3,y:5,type:5,dir:0}, {x:4,y:2,type:10,dir:0}, {x:4,y:8,type:10,dir:0}, {x:5,y:2,type:4,dir:1}, {x:7,y:2,type:11,dir:1}, {x:5,y:8,type:4,dir:0}, {x:7,y:8,type:11,dir:1}]
+                    },
+                    {
+                        title: "19. The Array", concept: "Diffraction",
+                        desc: "Split a single beam into a grid of light.",
+                        objective: "Hit all 3 targets.",
+                        inventory: { [TYPES.SPLITTER]: 2, [TYPES.MIRROR]: 2 },
+                        layout: [{x:1,y:1,type:2,dir:2}, {x:5,y:10,type:3,color:'WHITE'}, {x:8,y:10,type:3,color:'WHITE'}, {x:11,y:10,type:3,color:'WHITE'}],
+                        solution: [{x:1,y:5,type:4,dir:1}, {x:5,y:5,type:10,dir:0}, {x:5,y:8,type:4,dir:1}, {x:8,y:5,type:10,dir:0}, {x:8,y:8,type:4,dir:1}, {x:11,y:5,type:4,dir:0}]
+                    },
+                    {
+                        title: "20. Illumination", concept: "Mastery",
+                        desc: "Bring light to the darkness.",
+                        objective: "The Final Exam.",
+                        inventory: { [TYPES.PRISM]: 1, [TYPES.SPLITTER]: 2, [TYPES.MIRROR]: 6, [TYPES.FILTER]: 2, [TYPES.BLOCK_GLASS]: 2 },
+                        layout: [{x:0,y:6,type:2,dir:1}, {x:11,y:0,type:3,color:'RED'}, {x:11,y:6,type:3,color:'GREEN'}, {x:11,y:11,type:3,color:'BLUE'}, {x:6,y:3,type:1}, {x:6,y:9,type:1}],
+                        solution: [{x:3,y:6,type:5,dir:0}, {x:5,y:6,type:4,dir:1}, {x:5,y:11,type:4,dir:0}, {x:5,y:0,type:4,dir:1}, {x:8,y:0,type:4,dir:0}, {x:8,y:11,type:4,dir:1}] 
+                    }
+                ];
+            }
+
+            initGrid() {
+                this.grid = [];
+                for(let y=0; y<GRID_H; y++) {
+                    let r = [];
+                    for(let x=0; x<GRID_W; x++) r.push({type:0, dir:0, color:null, locked:false});
+                    this.grid.push(r);
+                }
+            }
+
+            loadLevel(idx) {
+                this.levelIndex = idx;
+                const lvl = this.levels[idx];
+                this.initGrid();
+                this.beams = [];
+                this.particles = [];
+                this.activeGate = false;
+                this.showingHint = false;
+                this.victoryStartTime = 0;
+
+                lvl.layout.forEach(i => {
+                    const c = this.grid[i.y][i.x];
+                    c.type = i.type; c.dir = i.dir ?? 0; c.color = i.color; c.locked = true; c.active = i.active;
+                });
+
+                this.inventory = {...lvl.inventory};
+                this.setSelection(null);
+                document.getElementById('level-objective').innerText = lvl.objective;
+                document.getElementById('header-level').innerText = `Level ${idx+1}`;
+                
+                const m = document.getElementById('victory-modal');
+                m.classList.remove('visible');
+                setTimeout(() => m.classList.add('hidden'), 500);
+            }
+
+            updateInventoryUI() {
+                const con = document.getElementById('inventory-grid');
+                con.innerHTML = '';
+                const map = { [TYPES.MIRROR]: 'fa-slash', [TYPES.PRISM]: 'fa-caret-up', [TYPES.FILTER]: 'fa-filter', [TYPES.SPLITTER]: 'fa-columns', [TYPES.BLOCK_GLASS]: 'fa-square', [TYPES.COMBINER]: 'fa-compress-arrows-alt' };
+                
+                Object.keys(this.inventory).forEach(k => {
+                    const type = parseInt(k);
+                    if(this.inventory[type] > 0) {
+                        const d = document.createElement('div');
+                        const sel = this.selection === type ? 'selected' : '';
+                        let colorClass = 'text-cyan-300';
+                        if(type === TYPES.FILTER) colorClass = 'text-white';
+                        
+                        d.className = `inventory-item glass-panel p-2 flex flex-col items-center justify-center h-16 ${sel}`;
+                        d.innerHTML = `<i class="fas ${map[type]} text-2xl ${colorClass} mb-1"></i><span class="text-xs font-bold text-gray-300">x${this.inventory[type]}</span>`;
+                        d.onclick = () => { this.setSelection(type); AudioSys.click(); };
+                        con.appendChild(d);
+                    }
+                });
+            }
+
+            calculate() {
+                this.beams = [];
+                let gateWasOpen = this.activeGate;
+                this.activeGate = false;
+                
+                // Reset combiner incoming colors
+                for(let y=0; y<GRID_H; y++) {
+                    for(let x=0; x<GRID_W; x++) {
+                        if(this.grid[y][x].type === TYPES.COMBINER) {
+                            this.grid[y][x].incomingColors = [];
+                        }
+                    }
+                }
+                
+                // First pass: cast all beams from sources
+                for(let y=0; y<GRID_H; y++) {
+                    for(let x=0; x<GRID_W; x++) {
+                        if(this.grid[y][x].type === TYPES.SOURCE) this.cast(x, y, this.grid[y][x].dir, this.grid[y][x].color || 'WHITE');
+                    }
+                }
+                
+                // Second pass: process combiners and emit combined colors
+                for(let y=0; y<GRID_H; y++) {
+                    for(let x=0; x<GRID_W; x++) {
+                        const cell = this.grid[y][x];
+                        if(cell.type === TYPES.COMBINER && cell.incomingColors && cell.incomingColors.length > 0) {
+                            const combined = this.combineColors(cell.incomingColors);
+                            // Emit in direction based on combiner orientation
+                            this.cast(x, y, cell.dir, combined, 0);
+                        }
+                    }
+                }
+
+                this.beams.forEach(b => {
+                    const end = b.path[b.path.length-1];
+                    if(end.x >=0 && end.x < GRID_W && end.y >=0 && end.y < GRID_H) {
+                        const c = this.grid[end.y][end.x];
+                        if(c.type === TYPES.SENSOR && (b.color === c.color || c.color === 'WHITE')) {
+                            this.activeGate = true;
+                        }
+                    }
+                });
+                
+                if(this.activeGate && !gateWasOpen) AudioSys.tone(1000, 'sine', 0.2);
+
+                for(let y=0; y<GRID_H; y++) {
+                    for(let x=0; x<GRID_W; x++) {
+                        if(this.grid[y][x].type === TYPES.GATE) this.grid[y][x].active = !this.activeGate;
+                    }
+                }
+            }
+            
+            combineColors(colors) {
+                // Additive color mixing: combine RGB components
+                const comps = new Set();
+                colors.forEach(c => {
+                    if (COLOR_COMPS[c]) {
+                        COLOR_COMPS[c].forEach(comp => comps.add(comp));
+                    }
+                });
+                
+                const hasR = comps.has('RED');
+                const hasG = comps.has('GREEN');
+                const hasB = comps.has('BLUE');
+                
+                if (hasR && hasG && hasB) return 'WHITE';
+                if (hasR && hasG) return 'YELLOW';
+                if (hasR && hasB) return 'MAGENTA';
+                if (hasG && hasB) return 'CYAN';
+                if (hasR) return 'RED';
+                if (hasG) return 'GREEN';
+                if (hasB) return 'BLUE';
+                return 'WHITE';
+            }
+            
+            spawnInteractionParticle(gx, gy, color, dx, dy) {
+                if(Math.random() > 0.75) {
+                    let ix, iy;
+                    if (dx === 1) { ix = gx * TILE_SIZE; iy = gy * TILE_SIZE + TILE_SIZE/2; } 
+                    else if (dx === -1) { ix = gx * TILE_SIZE + TILE_SIZE; iy = gy * TILE_SIZE + TILE_SIZE/2; } 
+                    else if (dy === 1) { ix = gx * TILE_SIZE + TILE_SIZE/2; iy = gy * TILE_SIZE; } 
+                    else { ix = gx * TILE_SIZE + TILE_SIZE/2; iy = gy * TILE_SIZE + TILE_SIZE; }
+
+                    const angle = Math.random() * 6.28;
+                    const speed = 1 + Math.random(); 
+                    this.particles.push({
+                        x: ix, y: iy, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed, l: 0.4, c: COLORS[color].str
+                    });
+                }
+            }
+
+            cast(sx, sy, dir, color, depth=0) {
+                if(depth > 12) return;
+                let path = [{x:sx, y:sy}];
+                let cx=sx, cy=sy, cdir=dir;
+                
+                let dx=0, dy=0;
+                if(cdir===0) dy=-1; else if(cdir===1) dx=1; else if(cdir===2) dy=1; else dx=-1;
+                cx+=dx; cy+=dy;
+
+                while(cx>=0 && cx<GRID_W && cy>=0 && cy<GRID_H) {
+                    path.push({x:cx, y:cy});
+                    const c = this.grid[cy][cx];
+                    
+                    if(c.type !== TYPES.EMPTY) {
+                        this.spawnInteractionParticle(cx, cy, color, dx, dy);
+                        
+                        if(c.type === TYPES.WALL) break;
+                        if(c.type === TYPES.GATE && c.active) break;
+                        if(c.type === TYPES.TARGET || c.type === TYPES.SENSOR) break;
+
+                        if(c.type === TYPES.MIRROR) {
+                            if(c.dir%2===0) { if(dx===1) {dx=0; dy=-1;} else if(dx===-1) {dx=0; dy=1;} else if(dy===1) {dy=0; dx=-1;} else {dy=0; dx=1;} } 
+                            else { if(dx===1) {dx=0; dy=1;} else if(dx===-1) {dx=0; dy=-1;} else if(dy===1) {dy=0; dx=1;} else {dy=0; dx=-1;} }
+                        }
+                        else if(c.type === TYPES.SPLITTER) {
+                            this.beams.push({path, color}); // Save current beam before splitting
+                            this.cast(cx, cy, this.vecToDir(dx, dy), color, depth+1); 
+                            let rdx=0, rdy=0;
+                            if(c.dir%2===0) { if(dx===1){rdy=-1} else if(dx===-1){rdy=1} else if(dy===1){rdx=-1} else{rdx=1} }
+                            else { if(dx===1){rdy=1} else if(dx===-1){rdy=-1} else if(dy===1){rdx=1} else{rdx=-1} }
+                            this.cast(cx, cy, this.vecToDir(rdx, rdy), color, depth+1);
+                            return; // Don't push again at end
+                        }
+                        else if(c.type === TYPES.BLOCK_GLASS) {
+                            let odx = -dy, ody = dx;
+                            if(this.grid[cy+ody]?.[cx+odx]?.type === TYPES.EMPTY) { path.push({x:cx+odx, y:cy+ody}); cx+=odx; cy+=ody; }
+                        }
+                        else if(c.type === TYPES.PRISM && color === 'WHITE') {
+                            this.beams.push({path, color}); // Save incoming white beam before splitting
+                            this.cast(cx, cy, this.vecToDir(dx, dy), 'RED', depth+1);
+                            this.cast(cx, cy, this.vecToDir(dy, dx), 'BLUE', depth+1);
+                            this.cast(cx, cy, this.vecToDir(-dy, -dx), 'GREEN', depth+1);
+                            return; // Don't push again at end
+                        }
+                        else if(c.type === TYPES.FILTER) {
+                            // Subtractive Logic - determine new color AFTER the filter
+                            let pass = false;
+                            let newColor = color; // Color only changes after passing through
+                            
+                            if(color === 'WHITE') { pass = true; newColor = c.color; }
+                            else if(color === c.color) pass = true;
+                            else if(COLOR_COMPS[c.color] && COLOR_COMPS[c.color].includes(color)) pass = true; // e.g. Cyan filter passes Blue
+                            else if(COLOR_COMPS[color] && COLOR_COMPS[color].includes(c.color)) { pass = true; newColor = c.color; } // e.g. Yellow beam hits Red filter -> Red
+                            
+                            // Check shared components (e.g. Yellow beam hits Cyan filter -> Green)
+                            if(!pass && COLOR_COMPS[color] && COLOR_COMPS[c.color]) {
+                                const shared = COLOR_COMPS[color].filter(x => COLOR_COMPS[c.color].includes(x));
+                                if(shared.length > 0) { pass = true; newColor = shared[0]; }
+                            }
+
+                            // End current beam at the filter, start new beam with new color
+                            if(pass) {
+                                this.beams.push({path, color}); // Save current beam with original color
+                                this.cast(cx, cy, this.vecToDir(dx, dy), newColor, depth+1); // New beam starts from filter with new color
+                            }
+                            return; // Don't push beam again at the end
+                        }
+                        else if(c.type === TYPES.COMBINER) {
+                            // Store this beam hitting the combiner
+                            if (!c.incomingColors) c.incomingColors = [];
+                            if (!c.incomingColors.includes(color)) c.incomingColors.push(color);
+                            // The combining is done in a separate pass after all beams are cast
+                            this.beams.push({path, color}); // Save beam path up to combiner
+                            return; // Don't push again at end
+                        }
+                    }
+                    cx+=dx; cy+=dy;
+                }
+                this.beams.push({path, color});
+            }
+
+            vecToDir(dx, dy) {
+                if(dy===-1) return 0; if(dx===1) return 1; if(dy===1) return 2; return 3;
+            }
+
+            forceWin() {
+                const m = document.getElementById('victory-modal');
+                m.classList.remove('hidden');
+                AudioSys.win();
+                const l = this.levels[this.levelIndex];
+                document.getElementById('victory-concept-title').innerText = l.concept;
+                document.getElementById('victory-concept-desc').innerText = l.desc;
+                requestAnimationFrame(() => m.classList.add('visible'));
+            }
+
+            loop() {
+                this.calculate();
+                this.ctx.clearRect(0,0,600,600);
+                
+                this.ctx.strokeStyle='#222'; this.ctx.lineWidth=1; this.ctx.beginPath();
+                for(let i=0; i<=12; i++) {
+                    this.ctx.moveTo(i*50,0); this.ctx.lineTo(i*50,600);
+                    this.ctx.moveTo(0,i*50); this.ctx.lineTo(600,i*50);
+                }
+                this.ctx.stroke();
+
+                if(this.showingHint) {
+                    const sol = this.levels[this.levelIndex].solution;
+                    if(sol) {
+                        this.ctx.save(); this.ctx.globalAlpha = 0.3 + Math.sin(Date.now()/200)*0.1;
+                        sol.forEach(s => {
+                            const cur = this.grid[s.y][s.x];
+                            if(cur.type !== s.type || cur.dir !== s.dir) {
+                                this.drawCell(s.x, s.y, {...s, color: s.color || 'WHITE'});
+                                this.ctx.strokeStyle='#ffff00'; this.ctx.lineWidth=2; this.ctx.strokeRect(s.x*50+2, s.y*50+2, 46, 46);
+                            }
+                        });
+                        this.ctx.restore();
+                    }
+                }
+
+                this.ctx.lineCap='round'; this.ctx.lineJoin='round';
+                this.beams.forEach(b => {
+                    if(b.path.length<2) return;
+                    const c = COLORS[b.color].str;
+                    this.ctx.shadowBlur=15; this.ctx.shadowColor=c; this.ctx.strokeStyle=c; this.ctx.lineWidth=3;
+                    this.ctx.beginPath(); 
+                    this.ctx.moveTo(b.path[0].x*50+25, b.path[0].y*50+25);
+                    for(let i=1; i<b.path.length; i++) this.ctx.lineTo(b.path[i].x*50+25, b.path[i].y*50+25);
+                    this.ctx.stroke();
+                    this.ctx.shadowBlur=0; this.ctx.strokeStyle='#fff'; this.ctx.lineWidth=1; this.ctx.stroke();
+                });
+
+                for(let y=0; y<GRID_H; y++) for(let x=0; x<GRID_W; x++) this.drawCell(x, y, this.grid[y][x]);
+
+                let targets = [], allHit = true;
+                for(let y=0; y<GRID_H; y++) for(let x=0; x<GRID_W; x++) if(this.grid[y][x].type === TYPES.TARGET) targets.push({x,y,c:this.grid[y][x].color});
+                
+                targets.forEach(t => {
+                    let tHit = false;
+                    this.beams.forEach(b => {
+                        const end = b.path[b.path.length-1];
+                        if(end.x===t.x && end.y===t.y && (b.color===t.c || t.c==='WHITE')) tHit = true;
+                    });
+                    if(!tHit) allHit = false;
+                    else {
+                        // Find the beam color hitting this target
+                        let hitColor = t.c;
+                        this.beams.forEach(b => {
+                            const end = b.path[b.path.length-1];
+                            if(end.x===t.x && end.y===t.y && (b.color===t.c || t.c==='WHITE')) hitColor = b.color;
+                        });
+                        if(Math.random()>0.9) this.particles.push({x:t.x*50+25, y:t.y*50+25, vx:(Math.random()-.5)*2, vy:(Math.random()-.5)*2, l:1, c:COLORS[hitColor].str});
+                    }
+                });
+
+                if(allHit && targets.length > 0) {
+                     if(this.victoryStartTime === 0) {
+                         this.victoryStartTime = Date.now();
+                         AudioSys.charge();
+                     }
+                     const elapsed = Date.now() - this.victoryStartTime;
+                     targets.forEach(t => {
+                        const cx = t.x*50+25, cy = t.y*50+25;
+                        this.ctx.save();
+                        const pulse = (Math.sin(elapsed/100) + 1) / 2; 
+                        this.ctx.globalAlpha = 0.5 + (0.5 * pulse);
+                        this.ctx.shadowBlur = 20 + (20 * pulse);
+                        this.ctx.shadowColor = COLORS[t.c].str;
+                        this.ctx.fillStyle = COLORS[t.c].str;
+                        this.ctx.beginPath();
+                        this.ctx.arc(cx, cy, 20 + (5*pulse), 0, 6.28);
+                        this.ctx.fill();
+                        this.ctx.restore();
+                        if(Math.random()>0.5) {
+                            const angle = Math.random() * 6.28;
+                            const speed = 2 + Math.random();
+                            this.particles.push({x: cx, y: cy, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed, l: 0.8, c: '#ffffff'});
+                        }
+                     });
+                     if(elapsed > 1000) {
+                         const m = document.getElementById('victory-modal');
+                         if(m.classList.contains('hidden')) {
+                             m.classList.remove('hidden');
+                             AudioSys.win();
+                             const l = this.levels[this.levelIndex];
+                             document.getElementById('victory-concept-title').innerText = l.concept;
+                             document.getElementById('victory-concept-desc').innerText = l.desc;
+                             requestAnimationFrame(() => m.classList.add('visible'));
+                         }
+                     }
+                } else {
+                    this.victoryStartTime = 0;
+                }
+
+                for(let i=this.particles.length-1; i>=0; i--) {
+                    let p = this.particles[i]; p.x+=p.vx; p.y+=p.vy; p.l-=0.03;
+                    if(p.l<=0) this.particles.splice(i,1);
+                    else {
+                        this.ctx.globalAlpha=p.l; this.ctx.fillStyle=p.c; 
+                        this.ctx.beginPath(); this.ctx.arc(p.x, p.y, 2, 0, 6.28); this.ctx.fill();
+                        this.ctx.globalAlpha=1;
+                    }
+                }
+                requestAnimationFrame(() => this.loop());
+            }
+
+            drawCell(x, y, c) {
+                if(c.type===0) return;
+                const cx = x*50+25, cy = y*50+25;
+                this.ctx.save(); this.ctx.translate(cx, cy);
+                let rot = 0;
+                if(c.dir===1) rot=1.57; if(c.dir===2) rot=3.14; if(c.dir===3) rot=-1.57;
+                if(c.type===TYPES.MIRROR || c.type===TYPES.SPLITTER) rot = (c.dir%2!==0) ? 1.57 : 0;
+                this.ctx.rotate(rot);
+
+                if(c.type===TYPES.WALL) { this.ctx.fillStyle='#444'; this.ctx.fillRect(-22,-22,44,44); }
+                else if(c.type===TYPES.SOURCE) { 
+                    this.ctx.fillStyle='#fff'; this.ctx.beginPath(); this.ctx.arc(0,0,15,0,6.28); this.ctx.fill();
+                    this.ctx.fillStyle='#000'; this.ctx.beginPath(); this.ctx.moveTo(0,-10); this.ctx.lineTo(-6,6); this.ctx.lineTo(6,6); this.ctx.fill();
+                }
+                else if(c.type===TYPES.TARGET) {
+                    this.ctx.strokeStyle=COLORS[c.color].str; this.ctx.lineWidth=4; this.ctx.beginPath(); this.ctx.arc(0,0,15,0,6.28); this.ctx.stroke();
+                    this.ctx.fillStyle=COLORS[c.color].str; this.ctx.beginPath(); this.ctx.arc(0,0,6,0,6.28); this.ctx.fill();
+                }
+                else if(c.type===TYPES.MIRROR) {
+                    this.ctx.lineWidth=4; this.ctx.strokeStyle='#00ffff'; this.ctx.beginPath(); this.ctx.moveTo(20,-20); this.ctx.lineTo(-20,20); this.ctx.stroke();
+                    this.ctx.lineWidth=2; this.ctx.strokeStyle='#555'; this.ctx.beginPath(); this.ctx.moveTo(15,-15); this.ctx.lineTo(-15,15); this.ctx.stroke();
+                }
+                else if(c.type===TYPES.SPLITTER) {
+                    this.ctx.lineWidth=4; this.ctx.strokeStyle='rgba(200,200,255,0.7)'; this.ctx.setLineDash([5,3]);
+                    this.ctx.beginPath(); this.ctx.moveTo(20,-20); this.ctx.lineTo(-20,20); this.ctx.stroke(); this.ctx.setLineDash([]);
+                }
+                else if(c.type===TYPES.PRISM) {
+                    this.ctx.fillStyle='rgba(255,255,255,0.2)'; this.ctx.strokeStyle='#fff';
+                    this.ctx.beginPath(); this.ctx.moveTo(0,-15); this.ctx.lineTo(15,15); this.ctx.lineTo(-15,15); this.ctx.closePath(); this.ctx.fill(); this.ctx.stroke();
+                }
+                else if(c.type===TYPES.FILTER) {
+                    this.ctx.fillStyle=COLORS[c.color || 'RED'].str; this.ctx.globalAlpha=0.6; this.ctx.fillRect(-15,-5,30,10); this.ctx.globalAlpha=1;
+                    this.ctx.strokeStyle='#fff'; this.ctx.strokeRect(-15,-5,30,10);
+                }
+                else if(c.type===TYPES.BLOCK_GLASS) {
+                     this.ctx.fillStyle='rgba(150,220,255,0.2)'; this.ctx.strokeStyle='#88ccff'; this.ctx.fillRect(-18,-18,36,36); this.ctx.strokeRect(-18,-18,36,36);
+                }
+                else if(c.type===TYPES.SENSOR) {
+                    this.ctx.fillStyle='#333'; this.ctx.fillRect(-15,-15,30,30);
+                    this.ctx.fillStyle=COLORS[c.color].str; this.ctx.beginPath(); this.ctx.arc(0,0,8,0,6.28); this.ctx.fill();
+                    if(this.activeGate) { this.ctx.strokeStyle='#fff'; this.ctx.lineWidth=2; this.ctx.stroke(); }
+                }
+                else if(c.type===TYPES.GATE) {
+                    if(c.active) { this.ctx.fillStyle='#622'; this.ctx.strokeStyle='#f00'; this.ctx.fillRect(-20,-6,40,12); this.ctx.strokeRect(-20,-6,40,12); }
+                    else { this.ctx.strokeStyle='#444'; this.ctx.strokeRect(-20,-6,40,12); }
+                }
+                else if(c.type===TYPES.COMBINER) {
+                    // Draw combiner as a diamond shape with gradient
+                    this.ctx.fillStyle='rgba(255,255,100,0.3)';
+                    this.ctx.strokeStyle='#ffff66';
+                    this.ctx.lineWidth=2;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0,-18); this.ctx.lineTo(18,0); this.ctx.lineTo(0,18); this.ctx.lineTo(-18,0);
+                    this.ctx.closePath();
+                    this.ctx.fill(); this.ctx.stroke();
+                    // Inner circle
+                    this.ctx.fillStyle='rgba(255,255,255,0.5)';
+                    this.ctx.beginPath(); this.ctx.arc(0,0,6,0,6.28); this.ctx.fill();
+                }
+                this.ctx.restore();
+            }
+
+            toggleHint() { this.showingHint = !this.showingHint; }
+            
+            toggleGrimoire() { 
+                document.getElementById('grimoire-modal').classList.toggle('hidden'); 
+                if(!document.getElementById('grimoire-modal').classList.contains('hidden')) {
+                    document.getElementById('grimoire-list').innerHTML = this.levels.map((l,i) => {
+                        const completed = i < this.highestLevel;
+                        const current = i === this.levelIndex;
+                        const unlocked = i <= this.highestLevel;
+                        const locked = !unlocked;
+                        
+                        let borderClass = 'border-gray-700';
+                        let textClass = 'text-gray-500';
+                        let cursorClass = '';
+                        let statusIcon = '';
+                        
+                        if (completed) {
+                            borderClass = 'border-green-500';
+                            textClass = 'text-green-300';
+                            cursorClass = 'cursor-pointer hover:bg-white/5';
+                            statusIcon = '<i class="fas fa-check-circle text-green-400 mr-2"></i>';
+                        } else if (current) {
+                            borderClass = 'border-yellow-500';
+                            textClass = 'text-yellow-300';
+                            cursorClass = 'cursor-pointer hover:bg-white/5';
+                            statusIcon = '<i class="fas fa-play-circle text-yellow-400 mr-2"></i>';
+                        } else if (unlocked) {
+                            borderClass = 'border-cyan-500';
+                            textClass = 'text-cyan-300';
+                            cursorClass = 'cursor-pointer hover:bg-white/5';
+                            statusIcon = '<i class="fas fa-unlock text-cyan-400 mr-2"></i>';
+                        } else {
+                            statusIcon = '<i class="fas fa-lock text-gray-600 mr-2"></i>';
+                        }
+                        
+                        const clickHandler = unlocked ? `onclick="game.selectLevel(${i})"` : '';
+                        
+                        return `<div class="glass-panel p-3 border-l-4 ${borderClass} ${cursorClass}" ${clickHandler}>
+                            <div class="flex items-center">
+                                ${statusIcon}
+                                <div>
+                                    <h4 class="font-bold ${textClass}">${locked ? '???' : l.concept}</h4>
+                                    ${unlocked ? `<p class="text-xs text-gray-400">Level ${i + 1}: ${l.title.split('. ')[1] || l.title}</p>` : ''}
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join('');
+                }
+            }
+            
+            selectLevel(idx) {
+                if (idx <= this.highestLevel) {
+                    AudioSys.click();
+                    this.loadLevel(idx);
+                    this.toggleGrimoire();
+                }
+            }
+            
+            resetLevel() { this.loadLevel(this.levelIndex); }
+            
+            nextLevel() { 
+                // Update highest level reached
+                if (this.levelIndex + 1 > this.highestLevel) {
+                    this.highestLevel = this.levelIndex + 1;
+                    this.saveProgress();
+                }
+                
+                if(this.levelIndex < this.levels.length-1) {
+                    this.loadLevel(this.levelIndex+1); 
+                } else { 
+                    // Completed all levels!
+                    this.highestLevel = this.levels.length;
+                    this.saveProgress();
+                    this.levelIndex=0; 
+                    this.loadLevel(0); 
+                    alert("Congratulations! You have mastered all the concepts of light! Game Complete!"); 
+                }
+            }
+        }
+
+        window.onload = () => window.game = new Game();
+    </script>
+</body>
+</html>

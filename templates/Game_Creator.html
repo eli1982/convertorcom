@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameForge AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0f172a; 
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #475569; 
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- Load template and configuration first -->
+    <script src="/static/js/templates/gamePromptTemplate.js" type="text/babel"></script>
+    
+    <!-- Load basic components (no dependencies) -->
+    <script src="/static/js/components/Icon.jsx" type="text/babel"></script>
+    <script src="/static/js/components/Section.jsx" type="text/babel"></script>
+    <script src="/static/js/components/Input.jsx" type="text/babel"></script>
+    <script src="/static/js/components/ColorInput.jsx" type="text/babel"></script>
+    
+    <!-- Load components that depend on basic components -->
+    <script src="/static/js/components/TabNavigation.jsx" type="text/babel"></script>
+    <script src="/static/js/components/GamePreview.jsx" type="text/babel"></script>
+    <script src="/static/js/components/PromptPreview.jsx" type="text/babel"></script>
+    <script src="/static/js/components/SourceCodeView.jsx" type="text/babel"></script>
+    <script src="/static/js/components/EditInstructionsModal.jsx" type="text/babel"></script>
+    <script src="/static/js/components/FogSettings.jsx" type="text/babel"></script>
+    <script src="/static/js/components/EditorSidebar.jsx" type="text/babel"></script>
+    
+    <!-- Load main app last -->
+    <script src="/static/js/game_creator_app.jsx" type="text/babel"></script>
+    
+    <script type="text/babel">
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(GameMakerApp));
+    </script>
+</body>
+</html>

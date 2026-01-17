@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panda Island 3D</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+        #instructions {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            max-width: 300px;
+        }
+        #instructions h3 {
+            margin-top: 0;
+        }
+        #debugPanel {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 350px;
+            height: 100vh;
+            background: rgba(20, 20, 20, 0.95);
+            color: #00FF00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 15px;
+            overflow-y: auto;
+            border-left: 2px solid #00FF00;
+            display: none;
+            box-sizing: border-box;
+            z-index: 1000;
+        }
+        #debugPanel.active {
+            display: block;
+        }
+        #debugPanel h2 {
+            margin-top: 0;
+            color: #00FF00;
+            border-bottom: 1px solid #00FF00;
+            padding-bottom: 10px;
+        }
+        .part-item {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid #00AA00;
+            padding: 10px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .part-item.selected {
+            background: rgba(0, 255, 0, 0.2);
+            border: 2px solid #00FF00;
+        }
+        .part-item h4 {
+            margin: 0 0 8px 0;
+            color: #00FF00;
+        }
+        .part-prop {
+            display: flex;
+            justify-content: space-between;
+            margin: 4px 0;
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.2);
+        }
+        .prop-label {
+            color: #00AA00;
+        }
+        .prop-value {
+            color: #00FF00;
+            font-weight: bold;
+        }
+        .prop-value input {
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid #00AA00;
+            color: #00FF00;
+            width: 80px;
+            padding: 2px 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+        .size-input {
+            background: rgba(0, 255, 0, 0.1) !important;
+            border: 1px solid #00AA00 !important;
+            color: #00FF00 !important;
+            width: 80px !important;
+            padding: 2px 4px !important;
+            font-family: 'Courier New', monospace !important;
+            font-size: 11px !important;
+        }
+        .coord-input {
+            background: rgba(0, 255, 0, 0.1) !important;
+            border: 1px solid #00AA00 !important;
+            color: #00FF00 !important;
+            width: 80px !important;
+            padding: 2px 4px !important;
+            font-family: 'Courier New', monospace !important;
+            font-size: 11px !important;
+        }
+        .gizmo-handle {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            cursor: move;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <h3>🐼 Panda Island 3D</h3>
+        <p><strong>Click</strong> anywhere on the platforms to move the panda</p>
+        <p><strong>Right Mouse Drag</strong> to rotate camera</p>
+        <p><strong>Mouse Wheel</strong> to zoom</p>
+        <p><strong>D</strong> to toggle debug mode</p>
+    </div>
+    <div id="debugPanel">
+        <h2>🔧 Debug Mode</h2>
+        <div id="partsContainer"></div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { createPanda } from './js/createPanda.js';
+
+        // Game setup
+        const canvas = document.getElementById('gameCanvas');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 10, 100);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 12, 15);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // Controls
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 8;
+        controls.maxDistance = 40;
+        controls.maxPolarAngle = Math.PI / 2.2;
+        controls.mouseButtons = {
+            LEFT: null,
+            MIDDLE: THREE.MOUSE.PAN,
+            RIGHT: THREE.MOUSE.ROTATE
+        };
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        sunLight.position.set(10, 20, 10);
+        sunLight.castShadow = true;
+        sunLight.shadow.camera.left = -20;
+        sunLight.shadow.camera.right = 20;
+        sunLight.shadow.camera.top = 20;
+        sunLight.shadow.camera.bottom = -20;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+
+        // Textures
+        const textureLoader = new THREE.TextureLoader();
+
+        // Create voxel-style textures procedurally
+        function createVoxelTexture(topColor, sideColor, size = 32) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // Fill with side color
+            ctx.fillStyle = sideColor;
+            ctx.fillRect(0, 0, size, size);
+
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(2, 2);
+            return texture;
+        }
+
+        const grassTexture = createVoxelTexture('#7FBA3D', '#6DA534');
+        const dirtTexture = createVoxelTexture('#8B6F47', '#7A5E3A');
+        const stoneTexture = createVoxelTexture('#9E9E9E', '#7A7A7A');
+        
+        // Load grid pattern overlay
+        const gridTexture = textureLoader.load('img/grid_pattern.jpg');
+        gridTexture.wrapS = THREE.RepeatWrapping;
+        gridTexture.wrapT = THREE.RepeatWrapping;
+        gridTexture.repeat.set(1, 1);
+
+        // Helper function to create material array for box geometry with proper UV mapping
+        function createBoxMaterials(baseTexture, color) {
+            const gridTop = gridTexture.clone();
+            gridTop.needsUpdate = true;
+            gridTop.wrapS = THREE.RepeatWrapping;
+            gridTop.wrapT = THREE.RepeatWrapping;
+            gridTop.repeat.set(4, 4);
+            
+            const gridSide = gridTexture.clone();
+            gridSide.needsUpdate = true;
+            gridSide.wrapS = THREE.RepeatWrapping;
+            gridSide.wrapT = THREE.RepeatWrapping;
+            // This will be adjusted per platform based on dimensions
+            
+            // Create materials for each face of the box
+            // Order: [right, left, top, bottom, front, back]
+            return {
+                baseTexture: baseTexture,
+                gridTop: gridTop,
+                gridSide: gridSide,
+                color: color
+            };
+        }
+
+        // Material definitions
+        const grassMaterialData = createBoxMaterials(grassTexture, '#7FBA3D');
+        const dirtMaterialData = createBoxMaterials(dirtTexture, '#8B6F47');
+        const stoneMaterialData = createBoxMaterials(stoneTexture, '#9E9E9E');
+
+        // Platform configuration (bottom to top)
+        const platforms = [];
+        const platformConfigs = [
+            { y: 0, size: 12, height: 3, material: stoneMaterialData },
+            { y: 3, size: 10, height: 2.5, material: dirtMaterialData },
+            { y: 5.5, size: 7, height: 2, material: grassMaterialData }
+        ];
+
+        // Helper function to create materials array for a box with proper UV scaling
+        function createPlatformMaterials(matData, width, height, depth) {
+            var repeatScale = [depth / height * 0.1, 0.2]
+            // Create separate grid textures for each side
+            const gridRight = matData.gridSide.clone();
+            gridRight.needsUpdate = true;
+            gridRight.repeat.set(repeatScale[0], repeatScale[1]);
+            
+            const gridLeft = matData.gridSide.clone();
+            gridLeft.needsUpdate = true;
+            gridLeft.repeat.set(repeatScale[0], repeatScale[1]);
+            
+            const gridTop = matData.gridTop.clone();
+            gridTop.needsUpdate = true;
+            gridTop.repeat.set(repeatScale[0], repeatScale[1]);
+            
+            const gridBottom = matData.gridTop.clone();
+            gridBottom.needsUpdate = true;
+            gridBottom.repeat.set(repeatScale[0], repeatScale[1]);
+            
+            const gridFront = matData.gridSide.clone();
+            gridFront.needsUpdate = true;
+            gridFront.repeat.set(repeatScale[0], repeatScale[1]);
+            
+            const gridBack = matData.gridSide.clone();
+            gridBack.needsUpdate = true;
+            gridBack.repeat.set(repeatScale[0], repeatScale[1]);
+            
+            // Create individual materials for each face
+            // Order: [right(+x), left(-x), top(+y), bottom(-y), front(+z), back(-z)]
+            return [
+                new THREE.MeshStandardMaterial({ 
+                    map: matData.baseTexture,
+                    aoMap: gridRight,
+                    aoMapIntensity: 1.5,
+                    roughness: 0.8
+                }), // right
+                new THREE.MeshStandardMaterial({ 
+                    map: matData.baseTexture,
+                    aoMap: gridLeft,
+                    aoMapIntensity: 1.5,
+                    roughness: 0.8
+                }), // left
+                new THREE.MeshStandardMaterial({ 
+                    map: matData.baseTexture,
+                    aoMap: gridTop,
+                    aoMapIntensity: 13,
+                    roughness: 1
+                }), // top
+                new THREE.MeshStandardMaterial({ 
+                    map: matData.baseTexture,
+                    aoMap: gridBottom,
+                    aoMapIntensity: 2,
+                    roughness: 0.8
+                }), // bottom
+                new THREE.MeshStandardMaterial({ 
+                    map: matData.baseTexture,
+                    aoMap: gridFront,
+                    aoMapIntensity: 2,
+                    roughness: 0.8
+                }), // front
+                new THREE.MeshStandardMaterial({ 
+                    map: matData.baseTexture,
+                    aoMap: gridBack,
+                    aoMapIntensity: 2,
+                    roughness: 0.8
+                })  // back
+            ];
+        }
+        
+        // Helper function to create chamfered box geometry
+        function createChamferedBox(width, height, depth, bevelRadius = 0.1, bevelSegments = 3) {
+            const shape = new THREE.Shape();
+            const halfWidth = width / 2;
+            const halfHeight = height / 2;
+            
+            // Draw rectangle with rounded corners
+            shape.moveTo(-halfWidth + bevelRadius, -halfHeight);
+            shape.lineTo(halfWidth - bevelRadius, -halfHeight);
+            shape.quadraticCurveTo(halfWidth, -halfHeight, halfWidth, -halfHeight + bevelRadius);
+            shape.lineTo(halfWidth, halfHeight - bevelRadius);
+            shape.quadraticCurveTo(halfWidth, halfHeight, halfWidth - bevelRadius, halfHeight);
+            shape.lineTo(-halfWidth + bevelRadius, halfHeight);
+            shape.quadraticCurveTo(-halfWidth, halfHeight, -halfWidth, halfHeight - bevelRadius);
+            shape.lineTo(-halfWidth, -halfHeight + bevelRadius);
+            shape.quadraticCurveTo(-halfWidth, -halfHeight, -halfWidth + bevelRadius, -halfHeight);
+            
+            const extrudeSettings = {
+                depth: depth,
+                bevelEnabled: true,
+                bevelThickness: bevelRadius,
+                bevelSize: bevelRadius,
+                bevelSegments: bevelSegments
+            };
+            
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            // Center the geometry
+            geometry.translate(0, 0, -depth / 2);
+            
+            return geometry;
+        }
+
+        // Create platforms with chamfered edges
+        platformConfigs.forEach((config, index) => {
+            const geometry = createChamferedBox(config.size, config.height, config.size, 0.15, 3);
+            const materials = createPlatformMaterials(config.material, config.size, config.height, config.size);
+            const mesh = new THREE.Mesh(geometry, materials);
+            mesh.position.set(0, config.y + config.height / 2, 0);
+            mesh.receiveShadow = true;
+            mesh.castShadow = true;
+            scene.add(mesh);
+            platforms.push({
+                mesh,
+                y: config.y + config.height,
+                size: config.size,
+                walkable: true
+            });
+        });
+
+        // Create trees
+        function createTree(x, y, z, scale = 1) {
+            const group = new THREE.Group();
+            
+            // Trunk
+            const trunkGeometry = new THREE.CylinderGeometry(0.15 * scale, 0.2 * scale, 1.5 * scale, 8);
+            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x5D4037 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = 0.75 * scale;
+            trunk.castShadow = true;
+            group.add(trunk);
+            
+            // Foliage (multiple layers)
+            const foliageMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x7FBA3D,
+                roughness: 0.8
+            });
+            
+            const foliageLayers = [
+                { y: 1.5 * scale, size: 1.2 * scale },
+                { y: 2 * scale, size: 1.1 * scale },
+                { y: 2.5 * scale, size: 1 * scale },
+                { y: 3 * scale, size: 0.7 * scale }
+            ];
+            
+            foliageLayers.forEach((layer, i) => {
+                const foliageGeometry = new THREE.BoxGeometry(layer.size, layer.size * 0.4, layer.size);
+                const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
+                foliage.position.y = layer.y;
+                foliage.castShadow = true;
+                foliage.userData.isLeaf = true;
+                foliage.userData.rustleOffset = Math.random() * Math.PI * 2;
+                foliage.userData.rustleSpeed = 0.5 + Math.random() * 0.5;
+                group.add(foliage);
+            });
+            
+            group.position.set(x, y, z);
+            return group;
+        }
+
+        // Add trees
+        const trees = [];
+        const treePositions = [
+            { x: -2, z: -2, level: 2},
+            { x: 2, z: 2, level: 2 },
+            { x: -3, z: 3, level: 2 },
+            { x: 0, z: 0, level: 2, scale: 1.5 },
+            { x: 3, z: -3, level: 2},
+            { x: -4.5, z: 1, level: 1 }
+        ];
+
+        treePositions.forEach(pos => {
+            const platform = platforms[pos.level];
+            const tree = createTree(pos.x, platform.y, pos.z, pos.scale || 1);
+            scene.add(tree);
+            trees.push(tree);
+        });
+
+        // Create plants/flowers
+        function createPlant(x, y, z) {
+            const group = new THREE.Group();
+            
+            const stemGeometry = new THREE.CylinderGeometry(0.02, 0.03, 0.3, 6);
+            const stemMaterial = new THREE.MeshStandardMaterial({ color: 0x2E7D32 });
+            const stem = new THREE.Mesh(stemGeometry, stemMaterial);
+            stem.position.y = 0.15;
+            group.add(stem);
+            
+            const petalGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+            const petalMaterial = new THREE.MeshStandardMaterial({ 
+                color: Math.random() > 0.5 ? 0xFFEB3B : 0xFF5722 
+            });
+            const petals = new THREE.Mesh(petalGeometry, petalMaterial);
+            petals.position.y = 0.35;
+            petals.scale.set(1, 0.5, 1);
+            petals.userData.isPlant = true;
+            petals.userData.swayOffset = Math.random() * Math.PI * 2;
+            group.add(petals);
+            
+            group.position.set(x, y, z);
+            group.scale.set(0.8, 0.8, 0.8);
+            return group;
+        }
+
+        // Add plants
+        const plants = [];
+        for (let i = 0; i < 20; i++) {
+            const platform = platforms[Math.floor(Math.random() * platforms.length)];
+            const range = platform.size / 2 - 0.5;
+            const x = (Math.random() - 0.5) * range * 2;
+            const z = (Math.random() - 0.5) * range * 2;
+            const plant = createPlant(x, platform.y, z);
+            scene.add(plant);
+            plants.push(plant);
+        }
+
+        // Create water
+        function createWater() {
+            const waterGeometry = new THREE.PlaneGeometry(15, 15, 32, 32);
+            
+            // Create animated water material
+            const waterMaterial = new THREE.MeshStandardMaterial({
+                color: 0x4FC3F7,
+                transparent: true,
+                opacity: 0.7,
+                roughness: 0.1,
+                metalness: 0.3
+            });
+            
+            const water = new THREE.Mesh(waterGeometry, waterMaterial);
+            water.rotation.x = -Math.PI / 2;
+            water.position.y = -0.5;
+            water.receiveShadow = true;
+            
+            // Store original positions for wave animation
+            const positions = waterGeometry.attributes.position.array;
+            water.userData.originalPositions = new Float32Array(positions);
+            water.userData.isWater = true;
+            
+            return water;
+        }
+
+        const water = createWater();
+        scene.add(water);
+
+        // Create panda
+        const panda = createPanda();
+        panda.position.set(0, platforms[2].y, 0);
+        scene.add(panda);
+
+        // Pathfinding and movement
+        let targetPosition = null;
+        let isMoving = false;
+        let isJumping = false;
+        let jumpVelocity = 0;
+        const moveSpeed = 0.03;
+        const jumpSpeed = 0.15;
+        const gravity = 0.01;
+
+        function movePandaToTarget() {
+            if (!targetPosition || !isMoving) return;
+            
+            const currentPos = panda.position.clone();
+            const direction = targetPosition.clone().sub(currentPos);
+            const targetY = targetPosition.y;
+            direction.y = 0; // Only calculate horizontal distance
+            
+            const distance = direction.length();
+            
+            if (distance < 0.1 && !isJumping && Math.abs(panda.position.y - targetY) < 0.1) {
+                isMoving = false;
+                targetPosition = null;
+                panda.position.y = targetY; // Snap to platform
+                return;
+            }
+            
+            direction.normalize();
+            
+            // Rotate panda to face direction
+            const angle = Math.atan2(direction.x, direction.z);
+            panda.rotation.y = angle;
+            
+            // Check if we need to jump (height difference)
+            if (!isJumping && Math.abs(panda.position.y - targetY) > 0.3) {
+                isJumping = true;
+                jumpVelocity = jumpSpeed;
+            }
+            
+            // Move panda horizontally
+            if (distance > 0.1) {
+                panda.position.x += direction.x * moveSpeed;
+                panda.position.z += direction.z * moveSpeed;
+            }
+            
+            // Handle jumping/falling
+            if (isJumping) {
+                panda.position.y += jumpVelocity;
+                jumpVelocity -= gravity;
+                
+                // Check if landed on target platform
+                if (jumpVelocity < 0 && panda.position.y <= targetY) {
+                    panda.position.y = targetY;
+                    isJumping = false;
+                    jumpVelocity = 0;
+                }
+            } else {
+                // Smooth transition when walking on same level
+                const walkCycle = Date.now() * 0.01;
+                panda.position.y = targetY + Math.abs(Math.sin(walkCycle)) * 0.05;
+            }
+        }
+
+        // Click handling
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        
+        // Debug mode
+        let debugMode = false;
+        let selectedPart = null;
+        const pandaParts = []; // Store all panda parts with metadata
+        
+        // Function to create axis gizmo helpers
+        function createAxisGizmo(position) {
+            const group = new THREE.Group();
+            group.position.copy(position);
+            
+            // X axis (red)
+            const xGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8);
+            const xMat = new THREE.MeshStandardMaterial({ color: 0xFF0000, emissive: 0xFF0000 });
+            const xAxis = new THREE.Mesh(xGeom, xMat);
+            xAxis.rotation.z = Math.PI / 2;
+            xAxis.position.x = 0.2;
+            xAxis.userData.axisIndex = 0;
+            group.add(xAxis);
+            
+            // X arrow head
+            const xArrowGeom = new THREE.ConeGeometry(0.05, 0.1, 8);
+            const xArrow = new THREE.Mesh(xArrowGeom, xMat);
+            xArrow.rotation.z = -Math.PI / 2;
+            xArrow.position.x = 0.35;
+            group.add(xArrow);
+            
+            // Y axis (green)
+            const yGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8);
+            const yMat = new THREE.MeshStandardMaterial({ color: 0x00FF00, emissive: 0x00FF00 });
+            const yAxis = new THREE.Mesh(yGeom, yMat);
+            yAxis.position.y = 0.2;
+            yAxis.userData.axisIndex = 1;
+            group.add(yAxis);
+            
+            // Y arrow head
+            const yArrowGeom = new THREE.ConeGeometry(0.05, 0.1, 8);
+            const yArrow = new THREE.Mesh(yArrowGeom, yMat);
+            yArrow.position.y = 0.35;
+            group.add(yArrow);
+            
+            // Z axis (blue)
+            const zGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8);
+            const zMat = new THREE.MeshStandardMaterial({ color: 0x0000FF, emissive: 0x0000FF });
+            const zAxis = new THREE.Mesh(zGeom, zMat);
+            zAxis.rotation.x = Math.PI / 2;
+            zAxis.position.z = 0.2;
+            zAxis.userData.axisIndex = 2;
+            group.add(zAxis);
+            
+            // Z arrow head
+            const zArrowGeom = new THREE.ConeGeometry(0.05, 0.1, 8);
+            const zArrow = new THREE.Mesh(zArrowGeom, zMat);
+            zArrow.rotation.x = Math.PI / 2;
+            zArrow.position.z = 0.35;
+            group.add(zArrow);
+            
+            // Center sphere
+            const centerGeom = new THREE.SphereGeometry(0.08, 16, 16);
+            const centerMat = new THREE.MeshStandardMaterial({ color: 0xFFFF00, emissive: 0xFFFF00 });
+            const center = new THREE.Mesh(centerGeom, centerMat);
+            group.add(center);
+            
+            group.userData.isGizmo = true;
+            return group;
+        }
+        
+        // Store original panda parts and metadata
+        function storePandaParts() {
+            pandaParts.length = 0;
+            panda.children.forEach((child, index) => {
+                const geom = child.geometry;
+                const partName = `part_${index}`;
+                pandaParts.push({
+                    mesh: child,
+                    name: partName,
+                    index: index,
+                    originalGeometry: geom,
+                    color: child.material.color.getHex()
+                });
+            });
+        }
+        
+        // Update UI panel with panda parts
+        function updateDebugPanel() {
+            const container = document.getElementById('partsContainer');
+            container.innerHTML = '';
+            
+            // Add export button at top
+            const exportBtn = document.createElement('button');
+            exportBtn.textContent = '📋 Copy as createPanda() Code';
+            exportBtn.style.cssText = `
+                width: 100%;
+                padding: 10px;
+                margin-bottom: 15px;
+                background: #00AA00;
+                color: #000;
+                border: none;
+                border-radius: 3px;
+                font-weight: bold;
+                cursor: pointer;
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+            `;
+            exportBtn.addEventListener('click', exportPandaCode);
+            container.appendChild(exportBtn);
+            
+            pandaParts.forEach(part => {
+                const div = document.createElement('div');
+                div.className = 'part-item';
+                if (selectedPart === part) div.classList.add('selected');
+                
+                div.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h4 style="margin: 0; flex: 1;">${part.name}</h4>
+                        <button class="delete-btn" data-part="${part.index}" style="background: #FF3333; color: #fff; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: bold;">✕ Delete</button>
+                    </div>
+                    <div class="part-prop">
+                        <span class="prop-label">X:</span>
+                        <input type="number" step="0.01" value="${part.mesh.position.x.toFixed(2)}" data-prop="x" data-part="${part.index}" class="coord-input">
+                    </div>
+                    <div class="part-prop">
+                        <span class="prop-label">Y:</span>
+                        <input type="number" step="0.01" value="${part.mesh.position.y.toFixed(2)}" data-prop="y" data-part="${part.index}" class="coord-input">
+                    </div>
+                    <div class="part-prop">
+                        <span class="prop-label">Z:</span>
+                        <input type="number" step="0.01" value="${part.mesh.position.z.toFixed(2)}" data-prop="z" data-part="${part.index}" class="coord-input">
+                    </div>
+                    <div class="part-prop">
+                        <span class="prop-label">Width:</span>
+                        <input type="number" step="0.01" value="${(part.mesh.scale.x * part.originalGeometry.parameters.width).toFixed(2)}" data-prop="width" data-part="${part.index}" class="size-input">
+                    </div>
+                    <div class="part-prop">
+                        <span class="prop-label">Height:</span>
+                        <input type="number" step="0.01" value="${(part.mesh.scale.y * part.originalGeometry.parameters.height).toFixed(2)}" data-prop="height" data-part="${part.index}" class="size-input">
+                    </div>
+                    <div class="part-prop">
+                        <span class="prop-label">Depth:</span>
+                        <input type="number" step="0.01" value="${(part.mesh.scale.z * part.originalGeometry.parameters.depth).toFixed(2)}" data-prop="depth" data-part="${part.index}" class="size-input">
+                    </div>
+                `;
+                
+                div.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('coord-input') && !e.target.classList.contains('size-input') && !e.target.classList.contains('delete-btn')) {
+                        selectPart(part);
+                    }
+                });
+                container.appendChild(div);
+            });
+            
+            // Add delete button listeners
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const partIndex = parseInt(e.target.dataset.part);
+                    deletePart(partIndex);
+                });
+            });
+            
+            // Add input listeners for coordinates
+            document.querySelectorAll('.coord-input').forEach(input => {
+                input.addEventListener('mousedown', (e) => e.stopPropagation());
+                input.addEventListener('change', (e) => {
+                    const partIndex = parseInt(e.target.dataset.part);
+                    const prop = e.target.dataset.prop;
+                    const value = parseFloat(e.target.value);
+                    
+                    if (pandaParts[partIndex]) {
+                        pandaParts[partIndex].mesh.position[prop] = value;
+                        if (selectedPart && selectedPart.mesh.userData.gizmo) {
+                            selectedPart.mesh.userData.gizmo.position.copy(selectedPart.mesh.position);
+                        }
+                        updateDebugPanel();
+                    }
+                });
+            });
+            
+            // Add input listeners for sizes
+            document.querySelectorAll('.size-input').forEach(input => {
+                input.addEventListener('mousedown', (e) => e.stopPropagation());
+                input.addEventListener('change', (e) => {
+                    const partIndex = parseInt(e.target.dataset.part);
+                    const prop = e.target.dataset.prop;
+                    const value = parseFloat(e.target.value);
+                    
+                    if (pandaParts[partIndex]) {
+                        const geom = pandaParts[partIndex].originalGeometry.parameters;
+                        
+                        if (prop === 'width') {
+                            pandaParts[partIndex].mesh.scale.x = value / geom.width;
+                        } else if (prop === 'height') {
+                            pandaParts[partIndex].mesh.scale.y = value / geom.height;
+                        } else if (prop === 'depth') {
+                            pandaParts[partIndex].mesh.scale.z = value / geom.depth;
+                        }
+                        
+                        updateDebugPanel();
+                    }
+                });
+            });
+        }
+        
+        // Delete a part
+        function deletePart(partIndex) {
+            if (pandaParts[partIndex]) {
+                const part = pandaParts[partIndex];
+                
+                // Remove from scene
+                panda.remove(part.mesh);
+                
+                // Remove from array
+                pandaParts.splice(partIndex, 1);
+                
+                // Deselect if it was selected
+                if (selectedPart === part) {
+                    selectedPart = null;
+                    const oldGizmo = scene.getObjectByProperty('userData', { isGizmo: true });
+                    if (oldGizmo) scene.remove(oldGizmo);
+                }
+                
+                // Update indices
+                pandaParts.forEach((p, i) => {
+                    p.index = i;
+                });
+                
+                updateDebugPanel();
+            }
+        }
+        
+        // Export panda code
+        function exportPandaCode() {
+            let code = `function createPanda() {\n    const group = new THREE.Group();\n    const whiteMaterial = new THREE.MeshStandardMaterial({ color: 0xF6F6F6, roughness: 0.6 });\n    const blackMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 });\n    const charcoalMaterial = new THREE.MeshStandardMaterial({ color: 0x1E1E1E, roughness: 0.5 });\n\n    const addBlock = (width, height, depth, material, position) => {\n        const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);\n        mesh.position.copy(position);\n        mesh.castShadow = true;\n        group.add(mesh);\n        return mesh;\n    };\n\n`;
+            
+            pandaParts.forEach(part => {
+                const geom = part.originalGeometry.parameters;
+                const w = (part.mesh.scale.x * geom.width).toFixed(2);
+                const h = (part.mesh.scale.y * geom.height).toFixed(2);
+                const d = (part.mesh.scale.z * geom.depth).toFixed(2);
+                const x = part.mesh.position.x.toFixed(2);
+                const y = part.mesh.position.y.toFixed(2);
+                const z = part.mesh.position.z.toFixed(2);
+                
+                const material = part.color === 0xF6F6F6 ? 'whiteMaterial' : (part.color === 0x111111 ? 'blackMaterial' : 'charcoalMaterial');
+                
+                code += `    addBlock(${w}, ${h}, ${d}, ${material}, new THREE.Vector3(${x}, ${y}, ${z}));\n`;
+            });
+            
+            code += `\n    group.castShadow = true;\n    return group;\n}`;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(code).then(() => {
+                alert('Code copied to clipboard!');
+            }).catch(() => {
+                // Fallback: show in alert
+                alert('Copy this code:\n\n' + code);
+            });
+        }
+        
+        // Select a part and show gizmo
+        function selectPart(part) {
+            selectedPart = part;
+            
+            // Remove old gizmo if exists
+            const oldGizmo = scene.getObjectByProperty('userData', { isGizmo: true });
+            if (oldGizmo) scene.remove(oldGizmo);
+            
+            // Create and add new gizmo
+            if (part) {
+                const gizmo = createAxisGizmo(part.mesh.position);
+                scene.add(gizmo);
+                part.mesh.userData.gizmo = gizmo;
+            }
+            
+            updateDebugPanel();
+            
+            // Scroll to the selected part in the debug panel
+            setTimeout(() => {
+                const partElements = document.querySelectorAll('.part-item');
+                if (partElements[part.index]) {
+                    partElements[part.index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }, 0);
+        }
+        
+        // Drag gizmo axis
+        let draggingAxis = null;
+        let dragStartMouse = new THREE.Vector2();
+        let dragStartPos = new THREE.Vector3();
+        
+        canvas.addEventListener('mousedown', (event) => {
+            if (!debugMode || !selectedPart) return;
+            
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const gizmo = selectedPart.mesh.userData.gizmo;
+            
+            if (gizmo) {
+                const intersects = raycaster.intersectObjects(gizmo.children, true);
+                if (intersects.length > 0) {
+                    const intersectedMesh = intersects[0].object;
+                    // Check if it's an axis (indices 0-1 for X, 2-3 for Y, 4-5 for Z)
+                    const childIndex = gizmo.children.indexOf(intersectedMesh);
+                    if (childIndex >= 0 && childIndex < 6) { // 6 arrows/cylinders
+                        draggingAxis = Math.floor(childIndex / 2); // 0=X, 1=Y, 2=Z
+                        dragStartMouse.copy(mouse);
+                        dragStartPos.copy(selectedPart.mesh.position);
+                    }
+                }
+            }
+        });
+        
+        canvas.addEventListener('mousemove', (event) => {
+            if (!debugMode || !selectedPart || draggingAxis === null) return;
+            
+            const currentMouse = new THREE.Vector2(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                -(event.clientY / window.innerHeight) * 2 + 1
+            );
+            
+            const delta = currentMouse.clone().sub(dragStartMouse);
+            const movementAmount = delta.length() * 0.1;
+            
+            if (draggingAxis === 0) { // X axis
+                selectedPart.mesh.position.x = dragStartPos.x + (delta.x > 0 ? movementAmount : -movementAmount);
+            } else if (draggingAxis === 1) { // Y axis
+                selectedPart.mesh.position.y = dragStartPos.y + (delta.y > 0 ? -movementAmount : movementAmount);
+            } else if (draggingAxis === 2) { // Z axis
+                selectedPart.mesh.position.z = dragStartPos.z + (delta.x > 0 ? movementAmount : -movementAmount);
+            }
+            
+            // Update gizmo position
+            selectedPart.mesh.userData.gizmo.position.copy(selectedPart.mesh.position);
+            updateDebugPanel();
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            draggingAxis = null;
+        });
+        
+        // Toggle debug mode
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'd') {
+                debugMode = !debugMode;
+                const panel = document.getElementById('debugPanel');
+                
+                if (debugMode) {
+                    panel.classList.add('active');
+                    storePandaParts();
+                    updateDebugPanel();
+                } else {
+                    panel.classList.remove('active');
+                    selectedPart = null;
+                    
+                    // Remove gizmo
+                    scene.children = scene.children.filter(child => !child.userData.isGizmo);
+                }
+            }
+        });
+
+        // WASD camera movement
+        const keys = { w: false, a: false, s: false, d: false, q: false, e: false };
+        const cameraSpeed = 0.2;
+        
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'w') keys.w = true;
+            if (key === 'a') keys.a = true;
+            if (key === 's') keys.s = true;
+            if (key === 'd') keys.d = true;
+            if (key === 'q') keys.q = true;
+            if (key === 'e') keys.e = true;
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'w') keys.w = false;
+            if (key === 'a') keys.a = false;
+            if (key === 's') keys.s = false;
+            if (key === 'd') keys.d = false;
+            if (key === 'q') keys.q = false;
+            if (key === 'e') keys.e = false;
+        });
+
+        canvas.addEventListener('click', (event) => {
+            if (event.target !== canvas) return;
+            
+            // Only respond to left-click (button 0)
+            if (event.button !== 0) return;
+            
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Debug mode - select panda parts
+            if (debugMode) {
+                const intersects = raycaster.intersectObjects(pandaParts.map(p => p.mesh));
+                if (intersects.length > 0) {
+                    const clickedMesh = intersects[0].object;
+                    const part = pandaParts.find(p => p.mesh === clickedMesh);
+                    if (part) selectPart(part);
+                    return;
+                }
+            }
+            
+            // Normal mode - move panda
+            const intersects = raycaster.intersectObjects(platforms.map(p => p.mesh));
+            
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                const platform = platforms.find(p => p.mesh === intersects[0].object);
+                
+                if (platform && platform.walkable) {
+                    // Constrain to platform bounds
+                    const halfSize = platform.size / 2 - 0.5;
+                    targetPosition = new THREE.Vector3(
+                        Math.max(-halfSize, Math.min(halfSize, point.x)),
+                        platform.y,
+                        Math.max(-halfSize, Math.min(halfSize, point.z))
+                    );
+                    isMoving = true;
+                }
+            }
+        });
+
+        // Animation loop
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.016;
+            
+            // WASD camera movement
+            if (keys.w || keys.a || keys.s || keys.d || keys.q || keys.e) {
+                const direction = new THREE.Vector3();
+                const forward = new THREE.Vector3(0, 0, -1);
+                const right = new THREE.Vector3(1, 0, 0);
+                
+                // Get camera direction
+                camera.getWorldDirection(forward);
+                forward.y = 0;
+                forward.normalize();
+                right.copy(forward).cross(new THREE.Vector3(0, 1, 0)).normalize();
+                
+                if (keys.w) {
+                    direction.add(forward.multiplyScalar(cameraSpeed));
+                }
+                if (keys.s) {
+                    direction.add(forward.multiplyScalar(-cameraSpeed));
+                }
+                if (keys.d) {
+                    direction.add(right.multiplyScalar(cameraSpeed));
+                }
+                if (keys.a) {
+                    direction.add(right.multiplyScalar(-cameraSpeed));
+                }
+                if (keys.q) {
+                    direction.y -= cameraSpeed;
+                }
+                if (keys.e) {
+                    direction.y += cameraSpeed;
+                }
+                
+                camera.position.add(direction);
+                controls.target.add(direction);
+            }
+            
+            // Animate water
+            if (water.userData.isWater) {
+                const positions = water.geometry.attributes.position;
+                const originalPositions = water.userData.originalPositions;
+                
+                for (let i = 0; i < positions.count; i++) {
+                    const x = originalPositions[i * 3];
+                    const z = originalPositions[i * 3 + 2];
+                    
+                    positions.array[i * 3 + 1] = 
+                        Math.sin(x * 0.5 + time) * 0.1 +
+                        Math.cos(z * 0.5 + time * 0.7) * 0.1;
+                }
+                positions.needsUpdate = true;
+            }
+            
+            // Animate tree leaves (rustling)
+            trees.forEach(tree => {
+                tree.children.forEach(child => {
+                    if (child.userData.isLeaf) {
+                        const offset = child.userData.rustleOffset;
+                        const speed = child.userData.rustleSpeed;
+                        child.rotation.z = Math.sin(time * speed + offset) * 0.05;
+                        child.rotation.x = Math.cos(time * speed * 0.7 + offset) * 0.03;
+                    }
+                });
+            });
+            
+            // Animate plants (swaying)
+            plants.forEach(plant => {
+                const stem = plant.children[0];
+                const flower = plant.children[1];
+                if (flower.userData.isPlant) {
+                    const offset = flower.userData.swayOffset;
+                    stem.rotation.z = Math.sin(time * 2 + offset) * 0.1;
+                    flower.rotation.z = Math.sin(time * 2 + offset) * 0.15;
+                }
+            });
+            
+            // Move panda
+            movePandaToTarget();
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>

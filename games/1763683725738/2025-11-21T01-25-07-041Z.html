@@ -1,0 +1,787 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Mystic Forest Farm</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+            background-color: #000;
+            color: white;
+        }
+        canvas {
+            display: block;
+        }
+        #blocker {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        #instructions {
+            width: 80%;
+            max-width: 600px;
+            cursor: pointer;
+            text-shadow: 2px 2px 4px #000000;
+        }
+        #instructions h1 {
+            font-size: 2.5rem;
+        }
+        #instructions p {
+            font-size: 1.2rem;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000000;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #win-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 5rem;
+            font-weight: bold;
+            color: #00ff00;
+            text-shadow: 3px 3px 6px #000000;
+            display: none;
+            z-index: 10;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 4px;
+            background-color: white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            mix-blend-mode: difference;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="blocker">
+        <div id="instructions">
+            <h1>Mystic Forest Farm</h1>
+            <p>The forest is corrupted. Use your magical bow to cleanse the spirits.</p>
+            <p><strong>Purify 10 corrupted dragon spirits to restore the land.</strong></p>
+            <br>
+            <p><strong>Controls:</strong></p>
+            <p>WASD: Move | SPACE: Jump | MOUSE: Look</p>
+            <p>LEFT MOUSE: Hold to charge, Release to fire</p>
+            <br>
+            <p style="font-size: 1.5rem; font-weight: bold;">Click to Begin</p>
+        </div>
+    </div>
+
+    <div id="ui">
+        <div id="score">Spirits Saved: 0/10</div>
+    </div>
+
+    <div id="win-message">FOREST RESTORED</div>
+    <div id="crosshair"></div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+        import { Reflector } from 'three/addons/objects/Reflector.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        class MysticForestGame {
+            constructor() {
+                this.clock = new THREE.Clock();
+                this.scene = new THREE.Scene();
+                this.worldObjects = [];
+                this.arrows = [];
+                this.enemies = [];
+                this.wildlife = [];
+                this.particles = [];
+                
+                this.purifiedCount = 0;
+                this.totalSpirits = 10;
+                this.gameOver = false;
+                
+                this.moveState = { forward: 0, right: 0 };
+                this.charge = { active: false, power: 0 };
+
+                this.init();
+            }
+
+            init() {
+                // Renderer
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.shadowMap.enabled = true;
+                document.body.appendChild(this.renderer.domElement);
+
+                // Camera
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.camera.position.y = 2.0;
+
+                // Scene
+                this.initAtmosphere();
+
+                // Lighting
+                this.ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                this.scene.add(this.ambientLight);
+
+                this.sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+                this.sunLight.position.set(50, 50, 50);
+                this.sunLight.castShadow = true;
+                this.sunLight.shadow.mapSize.width = 2048;
+                this.sunLight.shadow.mapSize.height = 2048;
+                this.sunLight.shadow.camera.near = 0.5;
+                this.sunLight.shadow.camera.far = 500;
+                this.sunLight.shadow.camera.left = -100;
+                this.sunLight.shadow.camera.right = 100;
+                this.sunLight.shadow.camera.top = 100;
+                this.sunLight.shadow.camera.bottom = -100;
+                this.scene.add(this.sunLight);
+
+                // Player
+                this.player = {
+                    velocity: new THREE.Vector3(),
+                    direction: new THREE.Vector3(),
+                    onGround: false,
+                    speed: 40.0,
+                    jumpSpeed: 10.0,
+                    gravity: 9.8,
+                    eyeHeight: 2.0,
+                };
+
+                // Controls
+                this.controls = new PointerLockControls(this.camera, document.body);
+                this.scene.add(this.controls.getObject());
+
+                const blocker = document.getElementById('blocker');
+                const instructions = document.getElementById('instructions');
+                instructions.addEventListener('click', () => this.controls.lock());
+                this.controls.addEventListener('lock', () => {
+                    blocker.style.display = 'none';
+                    instructions.style.display = 'none';
+                });
+                this.controls.addEventListener('unlock', () => {
+                    blocker.style.display = 'flex';
+                    instructions.style.display = 'block';
+                });
+                
+                // Input Listeners
+                document.addEventListener('keydown', (e) => this.onKey(e.code, 1));
+                document.addEventListener('keyup', (e) => this.onKey(e.code, 0));
+                document.addEventListener('mousedown', (e) => { if (e.button === 0) this.charge.active = true; });
+                document.addEventListener('mouseup', (e) => { if (e.button === 0) this.fireArrow(); });
+
+
+                // Post-processing
+                this.composer = new EffectComposer(this.renderer);
+                const renderPass = new RenderPass(this.scene, this.camera);
+                this.composer.addPass(renderPass);
+
+                this.bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+                this.bloomPass.threshold = 0.2;
+                this.bloomPass.strength = 0.6;
+                this.bloomPass.radius = 0;
+                this.composer.addPass(this.bloomPass);
+                
+                // Create World
+                this.createWorld();
+                this.createBow();
+                this.spawnEnemies(15);
+                this.spawnWildlife(30);
+
+                window.addEventListener('resize', this.onWindowResize.bind(this), false);
+                this.animate();
+            }
+
+            initAtmosphere() {
+                this.atmospheres = {
+                    start: {
+                        sky: new THREE.Color(0xdf9c5d),
+                        fog: new THREE.Color(0xffffff),
+                        light: new THREE.Color(0xf9bda4),
+                        fogNear: 27,
+                        fogFar: 300,
+                        bloom: 0.6
+                    },
+                    end: {
+                        sky: new THREE.Color(0x87CEEB),
+                        fog: new THREE.Color(0xFFFFFF),
+                        light: new THREE.Color(0xFFFACD),
+                        fogNear: 800,
+                        fogFar: 1000,
+                        bloom: 0
+                    }
+                };
+                this.scene.background = this.atmospheres.start.sky.clone();
+                this.scene.fog = new THREE.Fog(
+                    this.atmospheres.start.fog.clone(),
+                    this.atmospheres.start.fogNear,
+                    this.atmospheres.start.fogFar
+                );
+            }
+            
+            createProceduralTexture(color1, color2) {
+                const size = 512;
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const context = canvas.getContext('2d');
+                const imageData = context.createImageData(size, size);
+                const data = imageData.data;
+                const c1 = new THREE.Color(color1);
+                const c2 = new THREE.Color(color2);
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const value = Math.random();
+                    const c = c1.clone().lerp(c2, value);
+                    data[i] = c.r * 255;
+                    data[i + 1] = c.g * 255;
+                    data[i + 2] = c.b * 255;
+                    data[i + 3] = 255;
+                }
+                context.putImageData(imageData, 0, 0);
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                return texture;
+            }
+
+            createWorld() {
+                // Ground
+                const groundTexture = this.createProceduralTexture(0x3a542a, 0x5a7a42);
+                groundTexture.repeat.set(20, 20);
+                const groundMaterial = new THREE.MeshStandardMaterial({ map: groundTexture, roughness: 0.8, metalness: 0.2 });
+                const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), groundMaterial);
+                ground.rotation.x = -Math.PI / 2;
+                ground.receiveShadow = true;
+                this.scene.add(ground);
+                this.worldObjects.push(ground);
+
+                // Water
+                const waterGeometry = new THREE.PlaneGeometry(10, 80);
+                const water = new Reflector(waterGeometry, {
+                    clipBias: 0.003,
+                    textureWidth: window.innerWidth * window.devicePixelRatio,
+                    textureHeight: window.innerHeight * window.devicePixelRatio,
+                    color: 0x5599aa,
+                });
+                water.position.y = 0.05;
+                water.rotation.x = -Math.PI / 2;
+                this.scene.add(water);
+
+                // Structures
+                this.createStructures();
+
+                // Trees
+                const treeMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 });
+                for (let i = 0; i < 100; i++) {
+                    const tree = new THREE.Mesh(new THREE.ConeGeometry(1.5, 8, 8), treeMaterial);
+                    tree.position.set(
+                        (Math.random() - 0.5) * 80,
+                        4,
+                        (Math.random() - 0.5) * 80
+                    );
+                    if (Math.abs(tree.position.x) < 7) continue; // Keep center clear
+                    tree.castShadow = true;
+                    this.scene.add(tree);
+                }
+                
+                // Decorations
+                const decorColors = [0xff0000, 0x0000ff, 0x800080];
+                for (let i = 0; i < 50; i++) {
+                    const mat = new THREE.MeshStandardMaterial({ color: decorColors[i % 3], roughness: 0.5 });
+                    const geo = Math.random() > 0.5 ? new THREE.SphereGeometry(0.3, 8, 8) : new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                    const decor = new THREE.Mesh(geo, mat);
+                    decor.position.set(
+                        (Math.random() - 0.5) * 80,
+                        0.25,
+                        (Math.random() - 0.5) * 80
+                    );
+                     if (Math.abs(decor.position.x) < 6) continue;
+                    decor.castShadow = true;
+                    this.scene.add(decor);
+                }
+            }
+            
+            createStructures() {
+                const stoneMat = new THREE.MeshStandardMaterial({ map: this.createProceduralTexture(0xaaaaaa, 0xcccccc) });
+                const roofMat = new THREE.MeshStandardMaterial({ map: this.createProceduralTexture(0x8B4513, 0xD2691E) });
+                const woodMat = new THREE.MeshStandardMaterial({ color: 0xaa874b });
+
+                // Church-like building
+                const church = new THREE.Group();
+                const mainBody = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 12), stoneMat);
+                mainBody.position.y = 3;
+                mainBody.castShadow = true;
+                church.add(mainBody);
+
+                const roofShape = new THREE.Shape();
+                roofShape.moveTo(-4.5, 0);
+                roofShape.lineTo(0, 3);
+                roofShape.lineTo(4.5, 0);
+                roofShape.lineTo(-4.5, 0);
+                const roof = new THREE.Mesh(new THREE.ExtrudeGeometry(roofShape, { depth: 13, bevelEnabled: false }), roofMat);
+                roof.position.set(0, 6, -6.5);
+                roof.castShadow = true;
+                church.add(roof);
+                
+                const steepleBase = new THREE.Mesh(new THREE.BoxGeometry(3, 4, 3), stoneMat);
+                steepleBase.position.set(0, 8, 3.5);
+                steepleBase.castShadow = true;
+                church.add(steepleBase);
+                
+                const steepleTop = new THREE.Mesh(new THREE.ConeGeometry(2, 5, 8), roofMat);
+                steepleTop.position.set(0, 12.5, 3.5);
+                steepleTop.castShadow = true;
+                church.add(steepleTop);
+                
+                church.position.set(20, 0, 15);
+                this.scene.add(church);
+                this.worldObjects.push(church); // Simplified collision
+
+                // Fence
+                for (let i = -20; i <= 20; i += 2) {
+                    const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 0.1), woodMat);
+                    post.position.set(i, 0.5, 25);
+                    this.scene.add(post);
+                    if (i < 20) {
+                        const rail1 = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.1), woodMat);
+                        rail1.position.set(i + 1, 0.8, 25);
+                        this.scene.add(rail1);
+                        const rail2 = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.1), woodMat);
+                        rail2.position.set(i + 1, 0.4, 25);
+                        this.scene.add(rail2);
+                    }
+                }
+            }
+
+            createBow() {
+                this.bow = new THREE.Group();
+                const bowMat = new THREE.MeshBasicMaterial({ color: 0xaa874b });
+
+                const points = [
+                    new THREE.Vector3(0, -0.4, 0),
+                    new THREE.Vector3(0.1, 0, 0),
+                    new THREE.Vector3(0, 0.4, 0)
+                ];
+                const curve = new THREE.CatmullRomCurve3(points);
+                const bowMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.02, 8, false), bowMat);
+                this.bow.add(bowMesh);
+                
+                this.bow.position.set(0.3, -0.3, -0.6);
+                this.bow.scale.set(1, 1, 1);
+                this.camera.add(this.bow);
+                
+                // Arrow guide
+                this.arrowGuide = new THREE.Object3D();
+                this.camera.add(this.arrowGuide);
+            }
+
+            spawnEnemies(count) {
+                for (let i = 0; i < count; i++) {
+                    const enemy = new THREE.Group();
+                    enemy.isEnemy = true;
+                    enemy.state = 'corrupted'; // corrupted, purified
+                    
+                    const corruptedMat = new THREE.MeshStandardMaterial({ color: 0x880808, emissive: 0x550000, transparent: true, opacity: 0.8 });
+                    const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), corruptedMat);
+                    head.position.y = 0.5;
+                    enemy.add(head);
+                    
+                    for (let j = 1; j < 5; j++) {
+                        const bodyPart = new THREE.Mesh(new THREE.SphereGeometry(0.3 - j * 0.04, 8, 8), corruptedMat);
+                        bodyPart.position.z = -j * 0.5;
+                        enemy.add(bodyPart);
+                    }
+                    
+                    enemy.position.set(
+                        (Math.random() - 0.5) * 70,
+                        2 + Math.random() * 3,
+                        (Math.random() - 0.5) * 70
+                    );
+                    
+                    enemy.userData = {
+                        velocity: new THREE.Vector3(),
+                        targetPosition: new THREE.Vector3().copy(enemy.position),
+                        wanderTimer: Math.random() * 5
+                    };
+
+                    this.scene.add(enemy);
+                    this.enemies.push(enemy);
+                }
+            }
+            
+            spawnWildlife(count) {
+                 for (let i = 0; i < count; i++) {
+                    const type = Math.random();
+                    let animal;
+                    if (type < 0.5) { // Bunny
+                        animal = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshStandardMaterial({color: 0x8B4513}));
+                        animal.position.y = 0.2;
+                        animal.userData = {type: 'bunny', hopTimer: Math.random() * 2, velocity: new THREE.Vector3()};
+                    } else { // Bird
+                        animal = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 4), new THREE.MeshStandardMaterial({color: 0x444444}));
+                        animal.position.y = 10 + Math.random() * 5;
+                        animal.userData = {type: 'bird', angle: Math.random() * Math.PI * 2, center: new THREE.Vector3((Math.random() - 0.5) * 40, 0, (Math.random() - 0.5) * 40)};
+                    }
+                     
+                    animal.position.x = (Math.random() - 0.5) * 70;
+                    animal.position.z = (Math.random() - 0.5) * 70;
+                    if (Math.abs(animal.position.x) < 10) continue;
+                     
+                    this.wildlife.push(animal);
+                    this.scene.add(animal);
+                 }
+            }
+
+            onKey(code, value) {
+                switch (code) {
+                    case 'KeyW': this.moveState.forward = value; break;
+                    case 'KeyS': this.moveState.forward = -value; break;
+                    case 'KeyA': this.moveState.right = -value; break;
+                    case 'KeyD': this.moveState.right = value; break;
+                    case 'Space': if (value && this.player.onGround) this.player.velocity.y += this.player.jumpSpeed; break;
+                }
+            }
+            
+            fireArrow() {
+                if (!this.charge.active || this.gameOver) return;
+                
+                const arrow = new THREE.Group();
+                arrow.isArrow = true;
+                
+                const arrowMat = new THREE.MeshBasicMaterial({ color: 0x00FFFF, emissive: 0x00FFFF });
+                const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1, 6), arrowMat);
+                shaft.rotation.x = Math.PI / 2;
+                arrow.add(shaft);
+
+                const head = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 6), arrowMat);
+                head.position.z = -0.6;
+                head.rotation.x = Math.PI / 2;
+                arrow.add(head);
+
+                this.camera.getWorldPosition(arrow.position);
+                this.camera.getWorldQuaternion(arrow.quaternion);
+
+                const direction = new THREE.Vector3();
+                this.camera.getWorldDirection(direction);
+                arrow.userData.velocity = direction.multiplyScalar(30 + this.charge.power * 40);
+                arrow.userData.life = 5;
+
+                this.arrows.push(arrow);
+                this.scene.add(arrow);
+                
+                this.charge.active = false;
+                this.charge.power = 0;
+            }
+
+            updatePlayer(delta) {
+                if (!this.controls.isLocked) return;
+                
+                this.player.velocity.y -= this.player.gravity * delta;
+                
+                this.player.direction.z = this.moveState.forward;
+                this.player.direction.x = this.moveState.right;
+                this.player.direction.normalize();
+
+                const speed = this.player.speed;
+                if (this.moveState.forward !== 0) this.player.velocity.z -= this.player.direction.z * speed * delta;
+                if (this.moveState.right !== 0) this.player.velocity.x -= this.player.direction.x * speed * delta;
+                
+                // Floaty movement - low friction
+                this.player.velocity.x *= 0.95;
+                this.player.velocity.z *= 0.95;
+
+                this.controls.moveRight(-this.player.velocity.x * delta);
+                this.controls.moveForward(-this.player.velocity.z * delta);
+                
+                this.controls.getObject().position.y += this.player.velocity.y * delta;
+                
+                if (this.controls.getObject().position.y < this.player.eyeHeight) {
+                    this.player.velocity.y = 0;
+                    this.controls.getObject().position.y = this.player.eyeHeight;
+                    this.player.onGround = true;
+                } else {
+                    this.player.onGround = false;
+                }
+            }
+            
+            updateBow(delta) {
+                if(this.gameOver) {
+                    this.bow.visible = false;
+                    return;
+                }
+                
+                if (this.charge.active) {
+                    this.charge.power = Math.min(this.charge.power + delta * 1.5, 1);
+                    const scale = 1 + this.charge.power * 0.1;
+                    this.bow.scale.set(scale, scale, scale);
+                    this.bow.position.z = -0.6 - this.charge.power * 0.2;
+                    
+                    // Shake
+                    this.camera.position.x += (Math.random() - 0.5) * 0.01 * this.charge.power;
+                    this.camera.position.y += (Math.random() - 0.5) * 0.01 * this.charge.power;
+
+                } else {
+                    this.bow.scale.lerp(new THREE.Vector3(1, 1, 1), delta * 10);
+                    this.bow.position.lerp(new THREE.Vector3(0.3, -0.3, -0.6), delta * 10);
+                }
+            }
+
+            updateArrows(delta) {
+                for (let i = this.arrows.length - 1; i >= 0; i--) {
+                    const arrow = this.arrows[i];
+                    arrow.position.addScaledVector(arrow.userData.velocity, delta);
+                    arrow.userData.life -= delta;
+
+                    // Particle trail
+                    const particle = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.05, 4, 4),
+                        new THREE.MeshBasicMaterial({ color: 0x00FFFF, transparent: true })
+                    );
+                    particle.position.copy(arrow.position);
+                    particle.userData.life = 2;
+                    particle.userData.velocity = new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.5,
+                        (Math.random() - 0.5) * 0.5,
+                        (Math.random() - 0.5) * 0.5
+                    );
+                    this.particles.push(particle);
+                    this.scene.add(particle);
+
+                    if (arrow.userData.life <= 0) {
+                        this.scene.remove(arrow);
+                        this.arrows.splice(i, 1);
+                    }
+                }
+            }
+            
+            updateParticles(delta) {
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.position.addScaledVector(p.userData.velocity, delta);
+                    p.userData.life -= delta;
+                    p.material.opacity = p.userData.life / 2;
+                    if (p.userData.life <= 0) {
+                        this.scene.remove(p);
+                        this.particles.splice(i, 1);
+                    }
+                }
+            }
+
+            updateEnemies(delta) {
+                const playerPos = this.controls.getObject().position;
+                this.enemies.forEach(enemy => {
+                    if (enemy.state === 'purified') {
+                        enemy.position.y += delta * 2;
+                        enemy.children.forEach(child => {
+                            child.material.opacity -= delta * 0.5;
+                        });
+                        if (enemy.children[0].material.opacity <= 0) {
+                            this.scene.remove(enemy);
+                        }
+                        return;
+                    }
+                    
+                    const distToPlayer = enemy.position.distanceTo(playerPos);
+                    
+                    if (distToPlayer < 20) { // Chase
+                        const direction = playerPos.clone().sub(enemy.position).normalize();
+                        enemy.userData.velocity.add(direction.multiplyScalar(delta * 5));
+                    } else { // Wander
+                        enemy.userData.wanderTimer -= delta;
+                        if (enemy.userData.wanderTimer <= 0) {
+                            enemy.userData.targetPosition.set(
+                                (Math.random() - 0.5) * 70,
+                                2 + Math.random() * 3,
+                                (Math.random() - 0.5) * 70
+                            );
+                            enemy.userData.wanderTimer = 3 + Math.random() * 4;
+                        }
+                        const direction = enemy.userData.targetPosition.clone().sub(enemy.position).normalize();
+                        enemy.userData.velocity.add(direction.multiplyScalar(delta));
+                    }
+                    
+                    enemy.userData.velocity.clampLength(0, 3.0);
+                    enemy.position.addScaledVector(enemy.userData.velocity, delta);
+                    enemy.userData.velocity.multiplyScalar(0.95);
+                    enemy.lookAt(enemy.position.clone().add(enemy.userData.velocity));
+                    
+                    // Make body slither
+                    for(let i=1; i < enemy.children.length; i++) {
+                        enemy.children[i].position.x = Math.sin(this.clock.getElapsedTime() * 3 + i) * 0.2;
+                    }
+                });
+            }
+            
+            updateWildlife(delta) {
+                const playerPos = this.controls.getObject().position;
+                this.wildlife.forEach(animal => {
+                    const distToPlayer = animal.position.distanceTo(playerPos);
+                    if (distToPlayer < 10) { // Flee
+                        const fleeDir = animal.position.clone().sub(playerPos).normalize();
+                        animal.position.addScaledVector(fleeDir, delta * 5);
+                    } else { // Normal behavior
+                        if (animal.userData.type === 'bunny') {
+                            animal.userData.hopTimer -= delta;
+                            if (animal.userData.hopTimer < 0) {
+                                animal.userData.velocity.y = 2;
+                                animal.userData.velocity.x = (Math.random() - 0.5) * 2;
+                                animal.userData.velocity.z = (Math.random() - 0.5) * 2;
+                                animal.userData.hopTimer = 1 + Math.random();
+                            }
+                            animal.userData.velocity.y -= 9.8 * delta;
+                            animal.position.addScaledVector(animal.userData.velocity, delta);
+                            if (animal.position.y < 0.2) {
+                                animal.position.y = 0.2;
+                                animal.userData.velocity.y = 0;
+                            }
+                        } else if (animal.userData.type === 'bird') {
+                            animal.userData.angle += delta * 0.5;
+                            animal.position.x = animal.userData.center.x + Math.cos(animal.userData.angle) * 15;
+                            animal.position.z = animal.userData.center.z + Math.sin(animal.userData.angle) * 15;
+                        }
+                    }
+                    // Keep in bounds
+                    animal.position.x = Math.max(-39, Math.min(39, animal.position.x));
+                    animal.position.z = Math.max(-39, Math.min(39, animal.position.z));
+                });
+            }
+
+            checkCollisions() {
+                for (let i = this.arrows.length - 1; i >= 0; i--) {
+                    const arrow = this.arrows[i];
+                    for (let j = this.enemies.length - 1; j >= 0; j--) {
+                        const enemy = this.enemies[j];
+                        if (enemy.state === 'corrupted' && arrow.position.distanceTo(enemy.position) < 2) {
+                            this.purifyEnemy(enemy);
+                            this.scene.remove(arrow);
+                            this.arrows.splice(i, 1);
+                            break; 
+                        }
+                    }
+                }
+            }
+            
+            purifyEnemy(enemy) {
+                if (this.gameOver) return;
+                
+                enemy.state = 'purified';
+                const purifiedMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0x00FF00, transparent: true, opacity: 1 });
+                enemy.children.forEach(child => child.material = purifiedMat);
+                
+                if (this.purifiedCount < this.totalSpirits) {
+                    this.purifiedCount++;
+                    document.getElementById('score').textContent = `Spirits Saved: ${this.purifiedCount}/${this.totalSpirits}`;
+                }
+                
+                if (this.purifiedCount >= this.totalSpirits) {
+                    this.winGame();
+                }
+            }
+            
+            winGame() {
+                this.gameOver = true;
+                document.getElementById('win-message').style.display = 'block';
+                this.controls.unlock();
+            }
+
+            updateAtmosphere(delta) {
+                const progress = this.purifiedCount / this.totalSpirits;
+                
+                // Day-night cycle
+                const cycleTime = 120; // 120 seconds total
+                const time = this.clock.getElapsedTime();
+                const cycle = (time % cycleTime) / cycleTime;
+                const sunAngle = cycle * Math.PI * 2;
+                
+                this.sunLight.position.set(
+                    Math.cos(sunAngle) * 200,
+                    Math.sin(sunAngle) * 150,
+                    Math.sin(sunAngle) * 100
+                );
+                
+                const dayFactor = Math.max(0, this.sunLight.position.y) / 150;
+
+                // Combine progress and day/night
+                const currentSky = this.atmospheres.start.sky.clone().lerp(this.atmospheres.end.sky, progress);
+                const currentFog = this.atmospheres.start.fog.clone().lerp(this.atmospheres.end.fog, progress);
+                const currentLight = this.atmospheres.start.light.clone().lerp(this.atmospheres.end.light, progress);
+                
+                // Darken at night
+                const nightColor = new THREE.Color(0x050515);
+                this.scene.background.copy(currentSky).lerp(nightColor, 1 - dayFactor);
+                this.scene.fog.color.copy(currentFog).lerp(nightColor, 1 - dayFactor);
+                this.sunLight.color.copy(currentLight);
+
+                this.ambientLight.intensity = 0.5 * (progress + dayFactor * (1 - progress));
+                this.sunLight.intensity = (0.5 + 1.0 * progress) * dayFactor;
+                
+                this.scene.fog.near = THREE.MathUtils.lerp(this.atmospheres.start.fogNear, this.atmospheres.end.fogNear, progress);
+                this.scene.fog.far = THREE.MathUtils.lerp(this.atmospheres.start.fogFar, this.atmospheres.end.fogFar, progress);
+                
+                let bloomStrength = this.atmospheres.start.bloom;
+                if (progress > 0.7) {
+                    const bloomFade = (progress - 0.7) / 0.3;
+                    bloomStrength = THREE.MathUtils.lerp(this.atmospheres.start.bloom, this.atmospheres.end.bloom, bloomFade);
+                }
+                this.bloomPass.strength = bloomStrength;
+            }
+
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.composer.setSize(window.innerWidth, window.innerHeight);
+            }
+            
+            animate() {
+                requestAnimationFrame(this.animate.bind(this));
+                const delta = this.clock.getDelta();
+                
+                this.updatePlayer(delta);
+                this.updateBow(delta);
+                this.updateArrows(delta);
+                this.updateParticles(delta);
+                this.updateEnemies(delta);
+                this.updateWildlife(delta);
+                this.checkCollisions();
+                this.updateAtmosphere(delta);
+                
+                this.composer.render();
+            }
+        }
+
+        new MysticForestGame();
+    </script>
+</body>
+</html>

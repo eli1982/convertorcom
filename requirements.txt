@@ -1,0 +1,9 @@
+# Web Framework
+Flask==3.0.0
+flask-cors==4.0.0
+
+# Video Downloaders
+yt-dlp>=2025.10.22
+
+# Required for video processing (yt-dlp dependency)
+# Note: FFmpeg must be installed separately on the system

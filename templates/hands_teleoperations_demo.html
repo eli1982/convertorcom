@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="permissions-policy" content="camera=*, microphone=*">
+    <title>AI VIBES Teleoperations</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Hide the original video element; we'll draw it to the canvas */
+        #webcam {
+            display: none;
+        }
+        /* Style for the loading indicator */
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+        /* Simple spinner animation */
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border: 6px solid #FFF;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-3xl mx-auto">
+        <h1 class="text-3xl font-bold text-center mb-4">🦾 AI VIBES Teleoperations <span style="display: inline-block; transform: scaleX(-1);">🦾</span></h1>
+        
+        <!-- This container holds the canvas and the loading indicator -->
+        <!-- 1. FIX: Removed aspect-video to allow canvas to define its own aspect ratio -->
+        <div class="relative w-full bg-gray-800 rounded-lg shadow-2xl overflow-hidden">
+            <!-- Loading Indicator -->
+            <div id="loading">
+                <div class="spinner"></div>
+                <p>Loading model & camera...</p>
+                <p id="cameraHint" style="display: none; font-size: 0.9rem; margin-top: 1rem; color: #fbbf24;">
+                    If camera doesn't start, click the camera button 📷 at the bottom
+                </p>
+            </div>
+            
+            <!-- The canvas where the video and effects will be drawn -->
+            <!-- 2. FIX: Changed class from "w-full h-full" to "w-full h-auto" to maintain aspect ratio -->
+            <canvas id="output" class="w-full h-auto rounded-lg" style="display: none;"></canvas>
+            
+            <!-- The hidden video element that captures the webcam feed -->
+            <video id="webcam" playsinline></video>
+            
+            <!-- Camera Cycle Button - Bottom Left -->
+            <button id="cycleCameraBtn" 
+                    class="absolute bottom-4 left-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg transition-colors duration-200 flex items-center justify-center"
+                    style="font-size: 24px; line-height: 1; width: 48px; height: 48px; padding: 0;"
+                    title="Switch Camera">
+                <span style="margin-top:-5px ;">📷</span>
+            </button>
+            
+            <!-- Debug Toggle Button -->
+            <button id="debugBtn" 
+                    class="absolute bottom-4 left-20 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg shadow-lg transition-colors duration-200 flex items-center justify-center"
+                    style="font-size: 24px; line-height: 1; width: 48px; height: 48px; padding: 0;"
+                    title="Switch Hand Mode">
+                🖐️
+            </button>
+            
+            <!-- Video Toggle Button -->
+            <button id="videoBtn" 
+                    class="absolute bottom-4 left-36 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-lg transition-colors duration-200 flex items-center justify-center"
+                    style="font-size: 24px; line-height: 1; width: 48px; height: 48px; padding: 0;"
+                    title="Toggle Video Feed">
+                👤
+            </button>
+        </div>
+    </div>
+
+    <!-- 
+    ============================================================
+    LOAD REQUIRED MACHINE LEARNING LIBRARIES
+    ============================================================
+    -->
+    <!-- TensorFlow.js Core -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.20.0/dist/tf-core.min.js"></script>
+    <!-- TensorFlow.js WebGL Backend -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.20.0/dist/tf-backend-webgl.min.js"></script>
+    <!-- TensorFlow.js CPU Backend (fallback) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu@4.20.0/dist/tf-backend-cpu.min.js"></script>
+    
+    <!-- FIX: Explicitly load MediaPipe Hands solution to prevent constructor error -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"></script>
+
+    <!-- Hand Pose Detection Model -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.1/dist/hand-pose-detection.min.js"></script>
+
+    <!-- 
+    ============================================================
+    YOUR APPLICATION JAVASCRIPT
+    ============================================================
+    -->
+    <script type="module">
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingElement = document.getElementById('loading');
+        const cycleCameraBtn = document.getElementById('cycleCameraBtn');
+        const debugBtn = document.getElementById('debugBtn');
+        const videoBtn = document.getElementById('videoBtn');
+        const cameraHint = document.getElementById('cameraHint');
+
+        let detector;
+        let debugMode = 2; // 0 = no dots/bones, 1 = dots only, 2 = dots+bones, 3 = all points coords, 4 = fingertips coords, 5 = index tip coords
+        let showVideo = true; // Toggle for video feed visibility
+        let currentCameraIndex = 0; // Current camera device index
+        let availableCameras = []; // List of available camera devices
+        let cameraStatus = 'Initializing...'; // Camera status for display
+        const KEYPOINT_CONFIDENCE_THRESHOLD = 0.4;
+        
+        // Smoothing variables
+        let smoothedHands = []; // Stores smoothed keypoints for each hand
+        const SMOOTHING_FACTOR = 0.5; // 0 = no smoothing (jittery), 1 = max smoothing (laggy). 0.5 is a good balance
+
+        // Show camera hint after 5 seconds
+        setTimeout(() => {
+            if (cameraHint && loadingElement.style.display !== 'none') {
+                cameraHint.style.display = 'block';
+            }
+        }, 5000);
+
+        // Button click handler for camera cycling
+        cycleCameraBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            cycleCameras();
+        });
+        
+        // Button click handler for debug toggle
+        debugBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            debugMode = (debugMode + 1) % 6;
+            const modes = ['NO DOTS/BONES', 'DOTS ONLY', 'DOTS+BONES', 'ALL POINTS COORDS', 'FINGERTIPS COORDS', 'INDEX TIP COORDS'];
+            console.log(`Debug mode: ${modes[debugMode]}`);
+        });
+        
+        // Button click handler for video toggle
+        videoBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            showVideo = !showVideo;
+            console.log(`Video feed: ${showVideo ? 'ON' : 'OFF (black background)'}`);
+        });
+
+        // Keyboard event listener for debug toggle - cycles through 3 modes
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'd' || event.key === 'D') {
+                debugMode = (debugMode + 1) % 6;
+                const modes = ['NO DOTS/BONES', 'DOTS ONLY', 'DOTS+BONES', 'ALL POINTS COORDS', 'FINGERTIPS COORDS', 'INDEX TIP COORDS'];
+                console.log(`Debug mode: ${modes[debugMode]}`);
+            } else if (event.key === 'v' || event.key === 'V') {
+                showVideo = !showVideo;
+                console.log(`Video feed: ${showVideo ? 'ON' : 'OFF (black background)'}`);
+            } else if (event.key === 'c' || event.key === 'C') {
+                cycleCameras();
+            }
+        });
+
+        // --- UPDATED: Hand connection map, now ONLY for fingers ---
+        const HAND_CONNECTIONS = [
+            // Thumb
+            ['thumb_cmc', 'thumb_mcp'], ['thumb_mcp', 'thumb_ip'], ['thumb_ip', 'thumb_tip'],
+            // Index Finger
+            ['index_finger_mcp', 'index_finger_pip'], ['index_finger_pip', 'index_finger_dip'], ['index_finger_dip', 'index_finger_tip'],
+            // Middle Finger
+            ['middle_finger_mcp', 'middle_finger_pip'], ['middle_finger_pip', 'middle_finger_dip'], ['middle_finger_dip', 'middle_finger_tip'],
+            // Ring Finger
+            ['ring_finger_mcp', 'ring_finger_pip'], ['ring_finger_pip', 'ring_finger_dip'], ['ring_finger_dip', 'ring_finger_tip'],
+            // Pinky Finger
+            ['pinky_mcp', 'pinky_pip'], ['pinky_pip', 'pinky_dip'], ['pinky_dip', 'pinky_tip']
+        ];
+
+        // --- Main Application Logic ---
+        async function enumerateCameras() {
+            try {
+                // Request permission first to get camera labels
+                await navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(stream => stream.getTracks().forEach(track => track.stop()));
+                
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                availableCameras = devices.filter(device => device.kind === 'videoinput');
+                console.log(`Found ${availableCameras.length} camera(s):`, availableCameras.map((cam, idx) => `${idx}: ${cam.label || 'Camera ' + idx}`));
+                
+                // Show camera button if multiple cameras available
+                if (availableCameras.length > 1) {
+                    cycleCameraBtn.style.display = 'flex';
+                }
+            } catch (error) {
+                console.error('Error enumerating cameras:', error);
+            }
+        }
+
+        async function cycleCameras() {
+            if (availableCameras.length === 0) {
+                console.log('No cameras available to cycle');
+                return;
+            }
+            
+            currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+            const cameraName = availableCameras[currentCameraIndex].label || `Camera ${currentCameraIndex}`;
+            cameraStatus = `Loading: ${cameraName}`;
+            console.log(`Switching to camera ${currentCameraIndex}: ${cameraName}`);
+            
+            // Stop current stream
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+            }
+            
+            // Start new camera
+            await setupCamera();
+            cameraStatus = `Active: ${cameraName}`;
+        }
+
+        async function setupCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('getUserMedia is not supported by your browser');
+            }
+            
+            // Build constraints for the selected camera
+            const constraints = {
+                video: {
+                    width: { ideal: 1280, max: 1920 },
+                    height: { ideal: 720, max: 1080 },
+                    frameRate: { ideal: 30, max: 60 }
+                }
+            };
+            
+            // If we have enumerated cameras and selected one, use its deviceId
+            if (availableCameras.length > 0 && availableCameras[currentCameraIndex]) {
+                constraints.video.deviceId = { exact: availableCameras[currentCameraIndex].deviceId };
+            } else {
+                // Always use front-facing camera (user-facing) by default on all devices
+                constraints.video.facingMode = 'user';
+            }
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = stream;
+                
+                // Update camera status
+                if (availableCameras.length > 0 && availableCameras[currentCameraIndex]) {
+                    const cameraName = availableCameras[currentCameraIndex].label || `Camera ${currentCameraIndex}`;
+                    cameraStatus = `Active: ${cameraName}`;
+                } else {
+                    cameraStatus = 'Active: Default Camera';
+                }
+                
+                return new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        videoElement.play();
+                        canvasElement.width = videoElement.videoWidth;
+                        canvasElement.height = videoElement.videoHeight;
+                        console.log(`Canvas dimensions set to: ${canvasElement.width}x${canvasElement.height}`);
+                        resolve(videoElement);
+                    };
+                });
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                throw new Error(`Camera access failed: ${error.message}`);
+            }
+        }
+
+        async function loadHandDetector() {
+            const model = handPoseDetection.SupportedModels.MediaPipeHands;
+            const detectorConfig = {
+                runtime: 'mediapipe',
+                solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
+                modelType: 'full', // Changed from 'lite' to 'full' for better z-coordinate tracking
+                maxHands: 2
+            };
+            detector = await handPoseDetection.createDetector(model, detectorConfig);
+            console.log("Hand detector loaded with full model for z-coordinates.");
+            return detector;
+        }
+
+        // Function to apply exponential moving average smoothing to hand keypoints
+        function smoothHandKeypoints(currentHands) {
+            if (!currentHands || currentHands.length === 0) {
+                return currentHands;
+            }
+
+            // Initialize smoothed hands array if empty or size mismatch
+            if (smoothedHands.length !== currentHands.length) {
+                smoothedHands = currentHands.map(hand => ({
+                    ...hand,
+                    keypoints: hand.keypoints.map(kp => ({ ...kp }))
+                }));
+                return smoothedHands;
+            }
+
+            // Apply EMA smoothing: smoothed = alpha * current + (1 - alpha) * previous
+            smoothedHands = currentHands.map((currentHand, handIndex) => {
+                const previousHand = smoothedHands[handIndex];
+                
+                return {
+                    ...currentHand,
+                    keypoints: currentHand.keypoints.map((currentKp, kpIndex) => {
+                        const previousKp = previousHand.keypoints[kpIndex];
+                        
+                        return {
+                            ...currentKp,
+                            x: SMOOTHING_FACTOR * currentKp.x + (1 - SMOOTHING_FACTOR) * previousKp.x,
+                            y: SMOOTHING_FACTOR * currentKp.y + (1 - SMOOTHING_FACTOR) * previousKp.y
+                        };
+                    })
+                };
+            });
+
+            return smoothedHands;
+        }
+
+        // Function to draw hand landmarks and bones
+        function drawHandLandmarks(hands) {
+            if (!hands || hands.length === 0) return;
+
+            // Define fingertip indices for mode 4
+            const fingertipIndices = [4, 8, 12, 16, 20]; // thumb, index, middle, ring, pinky tips
+
+            // Skip drawing if mode 0 (no dots/bones)
+            if (debugMode === 0) return;
+
+            // --- 1. Draw Dots (Keypoints) - skip if mode 0 ---
+            if (debugMode >= 1) {
+                canvasCtx.fillStyle = 'lime';
+                hands.forEach(hand => {
+                    hand.keypoints.forEach((keypoint, index) => {
+                        if (keypoint.score < KEYPOINT_CONFIDENCE_THRESHOLD) return;
+                        const alpha = 0.7;
+                        canvasCtx.fillStyle = `rgba(0, 255, 0, ${alpha})`;
+
+                        // Adjust x-coordinate for mirrored view
+                        const mirroredX = canvasElement.width - keypoint.x;
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(mirroredX, keypoint.y, 5, 0, 2 * Math.PI);
+                        canvasCtx.fill();
+                        
+                        // Draw debug info based on mode
+                        let shouldShowDebug = false;
+                        if (debugMode === 3) {
+                            shouldShowDebug = true; // Show all points
+                        } else if (debugMode === 4 && fingertipIndices.includes(index)) {
+                            shouldShowDebug = true; // Show only fingertips
+                        } else if (debugMode === 5 && index === 8) {
+                            shouldShowDebug = true; // Show only index finger tip
+                        }
+                        
+                        if (shouldShowDebug) {
+                            // Since z coordinate is not provided by the library, estimate depth from hand size
+                            // Calculate distance between wrist (index 0) and middle finger tip (index 12)
+                            const wrist = hand.keypoints[0];
+                            const middleTip = hand.keypoints[12];
+                            const handSize = Math.sqrt(
+                                Math.pow(middleTip.x - wrist.x, 2) + 
+                                Math.pow(middleTip.y - wrist.y, 2)
+                            );
+                            // Larger hand size means closer to camera (inverse relationship)
+                            // Normalize to a reasonable scale and multiply by 10
+                            const estimatedDepth = (1000 / handSize) * 10;
+                            
+                            // Reverse x coordinate so left is 0 and right is maximum
+                            const reversedX = canvasElement.width - keypoint.x;
+                            const debugText = `[x:${Math.round(reversedX)}, y:${Math.round(keypoint.y)}, z:${Math.round(estimatedDepth)}]`;
+                            
+                            canvasCtx.font = '20px monospace';
+                            canvasCtx.fillStyle = 'white';
+                            
+                            // Draw text without outline
+                            canvasCtx.fillText(debugText, mirroredX + 8, keypoint.y - 5);
+                        }
+                    });
+                });
+            }
+
+            // --- 2. Draw Bones (Connections) - only if mode 2 or higher ---
+            if (debugMode >= 2) {
+                hands.forEach(hand => {
+                // Create a quick lookup map for keypoints by name
+                const keypointsByName = hand.keypoints.reduce((acc, keypoint) => {
+                    acc[keypoint.name] = keypoint;
+                    return acc;
+                }, {});
+
+                // Simple approach: Just draw lines between consecutive keypoints for each finger
+                // This bypasses the naming issue entirely
+                const fingers = {
+                    thumb: [1, 2, 3, 4],
+                    index: [5, 6, 7, 8],
+                    middle: [9, 10, 11, 12],
+                    ring: [13, 14, 15, 16],
+                    pinky: [17, 18, 19, 20]
+                };
+
+                canvasCtx.strokeStyle = 'rgba(255, 255, 0, 0.9)'; // Bright yellow
+                canvasCtx.lineWidth = 3;
+                canvasCtx.lineCap = 'round';
+
+                let bonesDrawn = 0;
+                
+                // Draw bones within each finger
+                Object.keys(fingers).forEach(fingerName => {
+                    const indices = fingers[fingerName];
+                    for (let i = 0; i < indices.length - 1; i++) {
+                        const startPoint = hand.keypoints[indices[i]];
+                        const endPoint = hand.keypoints[indices[i + 1]];
+
+                        if (startPoint && endPoint) {
+                            const mirroredStartX = canvasElement.width - startPoint.x;
+                            const mirroredEndX = canvasElement.width - endPoint.x;
+
+                            canvasCtx.beginPath();
+                            canvasCtx.moveTo(mirroredStartX, startPoint.y);
+                            canvasCtx.lineTo(mirroredEndX, endPoint.y);
+                            canvasCtx.stroke();
+                            bonesDrawn++;
+                        }
+                    }
+                });
+                
+                // Draw connections from each finger base to wrist (index 0) with lower opacity
+                const wrist = hand.keypoints[0];
+                if (wrist) {
+                    const mirroredWristX = canvasElement.width - wrist.x;
+                    
+                    // Lower opacity for wrist bones
+                    canvasCtx.strokeStyle = 'rgba(255, 255, 0, 0.3)';
+                    
+                    Object.keys(fingers).forEach(fingerName => {
+                        const indices = fingers[fingerName];
+                        const fingerBase = hand.keypoints[indices[0]]; // First point of each finger
+                        
+                        if (fingerBase) {
+                            const mirroredBaseX = canvasElement.width - fingerBase.x;
+                            
+                            canvasCtx.beginPath();
+                            canvasCtx.moveTo(mirroredWristX, wrist.y);
+                            canvasCtx.lineTo(mirroredBaseX, fingerBase.y);
+                            canvasCtx.stroke();
+                        }
+                    });
+                }
+            });
+            }
+        }
+
+        async function detectionLoop() {
+            if (detector && videoElement.readyState >= 3) {
+                try {
+                    const hands = await detector.estimateHands(videoElement, {
+                        flipHorizontal: false
+                    });
+
+                    // Apply smoothing to reduce jitter
+                    const smoothedHandsData = smoothHandKeypoints(hands);
+
+                    // --- Drawing ---
+                    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+                    // Draw video feed or black background based on toggle
+                    if (showVideo) {
+                        // Draw mirrored video feed
+                        canvasCtx.save();
+                        canvasCtx.scale(-1, 1);
+                        canvasCtx.translate(-canvasElement.width, 0);
+                        canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                        canvasCtx.restore();
+                    } else {
+                        // Draw black background
+                        canvasCtx.fillStyle = 'black';
+                        canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                    }
+
+                    // Draw Hand Landmarks and Bones using smoothed data
+                    drawHandLandmarks(smoothedHandsData);
+                    
+                    // Draw camera status in bottom right when in debug mode
+                    if (debugMode > 0) {
+                        const statusText = cameraStatus;
+                        canvasCtx.font = '12px monospace';
+                        canvasCtx.fillStyle = 'white';
+                        
+                        // Measure text width to position it from the right
+                        const textMetrics = canvasCtx.measureText(statusText);
+                        const textWidth = textMetrics.width;
+                        const padding = 10;
+                        
+                        // Draw background rectangle for better visibility
+                        canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                        canvasCtx.fillRect(
+                            canvasElement.width - textWidth - padding * 2,
+                            canvasElement.height - 25,
+                            textWidth + padding * 2,
+                            20
+                        );
+                        
+                        // Draw text
+                        canvasCtx.fillStyle = 'white';
+                        canvasCtx.fillText(
+                            statusText,
+                            canvasElement.width - textWidth - padding,
+                            canvasElement.height - 10
+                        );
+                    }
+
+                } catch (error) {
+                    console.error("Error during hand estimation:", error);
+                }
+            }
+
+            requestAnimationFrame(detectionLoop);
+        }
+
+        // --- Initialization ---
+        async function main() {
+            try {
+                // Try to set the backend to WebGL, fallback to CPU if it fails
+                try {
+                    await tf.setBackend('webgl');
+                    await tf.ready();
+                    console.log("TensorFlow.js backend set to WebGL.");
+                } catch (webglError) {
+                    console.warn("WebGL not available, falling back to CPU backend:", webglError);
+                    await tf.setBackend('cpu');
+                    await tf.ready();
+                    console.log("TensorFlow.js backend set to CPU.");
+                }
+
+                // Enumerate available cameras first to get the list
+                await enumerateCameras();
+                
+                // Then setup camera - this will use the enumerated cameras if available
+                await setupCamera();
+                console.log("Camera setup complete.");
+
+                await loadHandDetector();
+
+                if (detector) {
+                    loadingElement.style.display = 'none';
+                    canvasElement.style.display = 'block';
+                    cycleCameraBtn.style.display = 'flex'; // Always show camera button
+                    detectionLoop(); // Start the main loop
+                } else {
+                    loadingElement.textContent = "Failed to load hand detection model.";
+                }
+
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                loadingElement.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        main();
+    </script>
+
+</body>
+</html>

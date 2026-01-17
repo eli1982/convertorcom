@@ -1,0 +1,13 @@
+{
+    "name": "minecraft-clone",
+    "version": "1.0.0",
+    "description": "A complete Minecraft clone built with Three.js",
+    "main": "start_game.js",
+    "scripts": {
+        "start": "node start_game.js",
+        "server": "cd server && npm start"
+    },
+    "keywords": ["minecraft", "game", "threejs", "3d", "voxel"],
+    "author": "User",
+    "license": "MIT"
+}

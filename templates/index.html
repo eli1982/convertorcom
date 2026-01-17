@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Video Downloader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .supported-sites {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .site-badge {
+            background: #f0f0f0;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+
+        .progress-text {
+            font-size: 13px;
+            color: #666;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .status.pending,
+        .status.downloading {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+        }
+
+        .status.completed {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .status.failed {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+
+        .status-icon {
+            font-size: 20px;
+            margin-right: 10px;
+        }
+
+        .status-message {
+            font-weight: 500;
+        }
+
+        .download-btn {
+            margin-top: 15px;
+            background: #28a745;
+        }
+
+        .download-btn:hover {
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #004085;
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .info-box ul {
+            margin-left: 20px;
+        }
+
+        .info-box li {
+            margin-bottom: 5px;
+        }
+
+        #videoPlayer {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        video {
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Universal Video Downloader</h1>
+        <p class="subtitle">Download videos from multiple platforms in one place</p>
+        
+        <div class="supported-sites">
+            <span class="site-badge">📺 YouTube</span>
+            <span class="site-badge">🐦 Twitter/X</span>
+            <span class="site-badge">📡 M3U8 Streams</span>
+        </div>
+
+        <form id="downloadForm">
+            <div class="input-group">
+                <label for="videoUrl">Video URL</label>
+                <input 
+                    type="text" 
+                    id="videoUrl" 
+                    placeholder="Paste your video URL here..." 
+                    required
+                >
+            </div>
+            <button type="submit" id="downloadBtn">Download Video</button>
+        </form>
+
+        <div id="status" class="status">
+            <div>
+                <span class="status-icon" id="statusIcon"></span>
+                <span class="status-message" id="statusMessage"></span>
+            </div>
+            <div class="progress-container" id="progressContainer" style="display: none;">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-text" id="progressText" style="display: none;"></div>
+        </div>
+
+        <div id="videoPlayer" style="display: none; margin-top: 20px;">
+            <video id="videoElement" controls style="width: 100%; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <source id="videoSource" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            <div style="margin-top: 15px; text-align: center;">
+                <button class="download-btn" id="downloadVideoBtn" style="display: inline-block; width: auto; padding: 12px 24px;">
+                    💾 Download Video
+                </button>
+            </div>
+        </div>
+
+        <div class="info-box" id="infoBox">
+            <strong>ℹ️ Download Settings:</strong>
+            <ul>
+                <li>YouTube: Maximum 1080p resolution</li>
+                <li>Twitter/X: Maximum 1080p resolution (⚠️ may not work for private/protected accounts)</li>
+                <li>M3U8: Maximum available resolution</li>
+                <li>Format: MP4 (compatible with all devices)</li>
+                <li>Filenames: Automatically named with video title</li>
+            </ul>
+            <strong style="margin-top: 10px; display: block;">💡 Twitter/X Tips:</strong>
+            <ul>
+                <li>Use the full tweet URL (e.g., https://x.com/user/status/123...)</li>
+                <li>Only works with public tweets containing videos</li>
+                <li>Some tweets may fail due to platform restrictions</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('downloadForm');
+        const urlInput = document.getElementById('videoUrl');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusDiv = document.getElementById('status');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusMessage = document.getElementById('statusMessage');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const videoPlayer = document.getElementById('videoPlayer');
+        const videoElement = document.getElementById('videoElement');
+        const videoSource = document.getElementById('videoSource');
+        const downloadVideoBtn = document.getElementById('downloadVideoBtn');
+        const infoBox = document.getElementById('infoBox');
+        
+        let currentTaskId = null;
+        let statusCheckInterval = null;
+        let retryCount = 0;
+        const MAX_RETRIES = 1;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const url = urlInput.value.trim();
+            if (!url) return;
+
+            // Reset retry count
+            retryCount = 0;
+            
+            // Reset status and hide video player
+            videoPlayer.style.display = 'none';
+            infoBox.style.display = 'block';
+            statusDiv.className = 'status show pending';
+            statusIcon.innerHTML = '<div class="loader"></div>';
+            statusMessage.textContent = 'Starting download...';
+            progressContainer.style.display = 'none';
+            progressBar.style.width = '0%';
+            progressText.style.display = 'none';
+            downloadBtn.disabled = true;
+
+            await startDownload(url);
+        });
+
+        async function startDownload(url) {
+            try {
+                // Start download
+                const response = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to start download');
+                }
+
+                const data = await response.json();
+                currentTaskId = data.task_id;
+
+                // Start checking status
+                statusCheckInterval = setInterval(checkStatus, 2000);
+                
+            } catch (error) {
+                // Retry logic: try once more after 1 second
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    statusMessage.textContent = `Connection failed, retrying... (${retryCount}/${MAX_RETRIES})`;
+                    console.log(`Retry attempt ${retryCount} after 1 second...`);
+                    
+                    setTimeout(() => {
+                        startDownload(url);
+                    }, 1000);
+                } else {
+                    showError('Failed to start download after retries: ' + error.message);
+                }
+            }
+        }
+
+        async function checkStatus() {
+            if (!currentTaskId) return;
+
+            try {
+                const response = await fetch(`/api/status/${currentTaskId}`);
+                if (!response.ok) {
+                    throw new Error('Failed to check status');
+                }
+
+                const data = await response.json();
+                
+                if (data.status === 'downloading') {
+                    statusDiv.className = 'status show downloading';
+                    statusIcon.innerHTML = '<div class="loader"></div>';
+                    statusMessage.textContent = data.message || 'Downloading...';
+                    
+                    // Show and update progress bar
+                    if (data.progress !== undefined) {
+                        progressContainer.style.display = 'block';
+                        progressText.style.display = 'block';
+                        progressBar.style.width = data.progress + '%';
+                        progressText.textContent = `${data.progress}% complete`;
+                    }
+                } 
+                else if (data.status === 'completed') {
+                    clearInterval(statusCheckInterval);
+                    statusDiv.className = 'status show completed';
+                    statusIcon.textContent = '✅';
+                    statusMessage.textContent = `${data.message} - Video ready! Auto-downloading...`;
+                    progressContainer.style.display = 'none';
+                    progressText.style.display = 'none';
+                    downloadBtn.disabled = false;
+                    
+                    // Hide info box and show video player
+                    infoBox.style.display = 'none';
+                    videoPlayer.style.display = 'block';
+                    
+                    // Set video source and load
+                    videoSource.src = `/api/stream/${currentTaskId}`;
+                    videoElement.load();
+                    
+                    // Set download button handler
+                    downloadVideoBtn.onclick = () => downloadFile(currentTaskId);
+                    
+                    // Auto-download the file
+                    setTimeout(() => {
+                        statusMessage.textContent = `${data.message} - Download started!`;
+                        downloadFile(currentTaskId);
+                    }, 500);
+                } 
+                else if (data.status === 'failed') {
+                    clearInterval(statusCheckInterval);
+                    showError(data.message || 'Download failed');
+                }
+                
+            } catch (error) {
+                clearInterval(statusCheckInterval);
+                showError('Error checking status: ' + error.message);
+            }
+        }
+
+        function downloadFile(taskId) {
+            window.location.href = `/api/download/${taskId}`;
+        }
+
+        function showError(message) {
+            statusDiv.className = 'status show failed';
+            statusIcon.textContent = '❌';
+            statusMessage.textContent = message;
+            progressContainer.style.display = 'none';
+            progressText.style.display = 'none';
+            downloadBtn.disabled = false;
+        }
+
+        // Clear status when input changes
+        urlInput.addEventListener('input', () => {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+            statusDiv.className = 'status';
+            videoPlayer.style.display = 'none';
+            infoBox.style.display = 'block';
+            currentTaskId = null;
+        });
+    </script>
+</body>
+</html>

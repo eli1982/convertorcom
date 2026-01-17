@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<!--
+    3D Flappy Bird Game
+    
+    This game is created for fun and educational purposes only.
+    
+    License & Usage:
+    - This code is provided "as-is" without warranty of any kind.
+    - You may use this for personal learning and entertainment.
+    - Redistribution, resale, or commercial use of this source code 
+      without explicit permission from the author is strictly prohibited.
+      
+    Author: AI Vibes
+    Contact: theaivibes.official@gmail.com
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D Flappy Bird</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #333;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none; /* Prevent browser zooming/scrolling */
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none; /* Let touches pass through to logic handler unless on buttons */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .interactive {
+            pointer-events: auto;
+        }
+        .hidden {
+            display: none !important;
+        }
+        /* Text Shadow for better visibility */
+        .game-text {
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <!-- HUD -->
+        <div id="score-display" class="absolute top-10 text-white text-6xl font-bold game-text hidden">0</div>
+        
+        <!-- Camera Toggle Button -->
+        <button id="cam-btn" class="absolute top-4 right-4 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-sm border-2 border-white/50 transition interactive z-50">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
+
+        <!-- Music Toggle Button -->
+        <button id="music-btn" class="absolute top-4 left-4 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-sm border-2 border-white/50 transition interactive z-50">
+            <svg id="music-icon-on" class="hidden" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <svg id="music-icon-off" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+                <line x1="2" y1="2" x2="22" y2="22"/>
+            </svg>
+        </button>
+
+        <!-- SFX Toggle Button -->
+        <button id="sfx-btn" class="absolute top-4 left-20 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full backdrop-blur-sm border-2 border-white/50 transition interactive z-50">
+            <svg id="sfx-icon-on" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            <svg id="sfx-icon-off" class="hidden" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                <line x1="2" y1="2" x2="22" y2="22"/>
+            </svg>
+        </button>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="text-center interactive">
+            <h1 class="text-5xl md:text-7xl font-extrabold text-yellow-400 game-text mb-4">FLAPPY 3D</h1>
+            <p class="text-white text-xl mb-8 game-text">Tap or Click to Jump</p>
+            <button id="start-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-10 rounded-full text-2xl shadow-lg transform transition hover:scale-105 border-4 border-white">
+                PLAY
+            </button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="text-center interactive hidden">
+            <h2 class="text-6xl font-extrabold text-red-500 game-text mb-2">GAME OVER</h2>
+            <div class="bg-white/20 backdrop-blur-md p-6 rounded-xl border-2 border-white/50 shadow-2xl mb-6">
+                <p class="text-white text-2xl game-text">Score</p>
+                <p id="final-score" class="text-yellow-400 text-6xl font-bold game-text mb-4">0</p>
+                <p class="text-white text-lg game-text">Best: <span id="best-score">0</span></p>
+            </div>
+            <button id="restart-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-10 rounded-full text-2xl shadow-lg transform transition hover:scale-105 border-4 border-white">
+                TRY AGAIN
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- Game Constants & Variables ---
+        let scene, camera, renderer;
+        let bird;
+        let pipes = [];
+        let clouds = [];
+        let groundProps = []; // Bushes and rocks
+        let mountains = []; // Background mountains
+        let riverMesh; // Reference for river texture scrolling
+        let groundMesh; // Reference for texture scrolling
+        let animationId;
+        let lastTime = 0;
+        
+        // Game State
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let cameraMode = 'SIDE'; // SIDE, BEHIND
+        let score = 0;
+        let bestScore = localStorage.getItem('flappy3d_best') || 0;
+        let gameSpeed = 6; // Units per second
+        const pipeSpawnRate = 1.8; // Seconds between pipes
+        let timeSinceLastPipe = 0;
+
+        // Physics
+        const gravity = -28;
+        const jumpStrength = 9;
+        let velocityY = 0;
+        
+        // Visuals
+        const birdColor = 0xFFD700; // Gold
+        const pipeColor = 0x73BF2E; // Green
+        const skyColor = 0x87CEEB; // Sky Blue
+
+        // DOM Elements
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const scoreDisplay = document.getElementById('score-display');
+        const finalScoreEl = document.getElementById('final-score');
+        const bestScoreEl = document.getElementById('best-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const camBtn = document.getElementById('cam-btn');
+        const musicBtn = document.getElementById('music-btn');
+        const musicIconOn = document.getElementById('music-icon-on');
+        const musicIconOff = document.getElementById('music-icon-off');
+        
+        const sfxBtn = document.getElementById('sfx-btn');
+        const sfxIconOn = document.getElementById('sfx-icon-on');
+        const sfxIconOff = document.getElementById('sfx-icon-off');
+
+        const canvasContainer = document.getElementById('canvas-container');
+
+        // Audio (Synthesized for single file simplicity)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let isMusicPlaying = false;
+        let isSfxEnabled = true;
+        
+        // --- Music System (Popcorn Style Synthesizer) ---
+        const MusicSystem = {
+            isPlaying: false,
+            nextNoteTime: 0,
+            noteIndex: 0,
+            tempo: 120,
+            lookahead: 25.0, // ms
+            scheduleAheadTime: 0.1, // s
+            timerID: null,
+            // A simple "Popcorn-ish" sequence (Note frequencies in Hz)
+            melody: [
+                // Main Riff
+                392.00, 349.23, 392.00, 261.63, 196.00, 261.63, 196.00, 0, // G4 F4 G4 C4 G3 C4 G3 -
+                392.00, 349.23, 392.00, 261.63, 196.00, 261.63, 196.00, 0, // Repeat
+                392.00, 440.00, 493.88, 440.00, 493.88, 523.25, 587.33, 523.25, // Ascending bridge
+                392.00, 349.23, 392.00, 261.63, 196.00, 261.63, 196.00, 0
+            ],
+            
+            playNote: function(freq, time) {
+                if (freq === 0) return; // Rest
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const filter = audioCtx.createBiquadFilter();
+
+                // Connect graph
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                // Sound Design: Plucky Square Wave
+                osc.type = 'square';
+                osc.frequency.value = freq;
+
+                // Filter Envelope (The "Pop" sound)
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(200, time);
+                filter.frequency.exponentialRampToValueAtTime(2000, time + 0.05);
+                filter.frequency.exponentialRampToValueAtTime(200, time + 0.2);
+                filter.Q.value = 5;
+
+                // Amplitude Envelope (Short and staccato)
+                gain.gain.setValueAtTime(0.15, time);
+                gain.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+
+                osc.start(time);
+                osc.stop(time + 0.2);
+            },
+
+            scheduler: function() {
+                while (this.nextNoteTime < audioCtx.currentTime + this.scheduleAheadTime) {
+                    this.playNote(this.melody[this.noteIndex], this.nextNoteTime);
+                    
+                    // Advance time (Eighth notes)
+                    const secondsPerBeat = 60.0 / this.tempo;
+                    this.nextNoteTime += 0.5 * secondsPerBeat; 
+                    
+                    // Advance index
+                    this.noteIndex++;
+                    if (this.noteIndex >= this.melody.length) {
+                        this.noteIndex = 0;
+                    }
+                }
+                this.timerID = setTimeout(() => this.scheduler(), this.lookahead);
+            },
+
+            start: function() {
+                if (this.isPlaying) return;
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                
+                this.isPlaying = true;
+                this.noteIndex = 0;
+                this.nextNoteTime = audioCtx.currentTime + 0.1;
+                this.scheduler();
+                
+                // UI Update
+                musicIconOn.classList.remove('hidden');
+                musicIconOff.classList.add('hidden');
+            },
+
+            stop: function() {
+                this.isPlaying = false;
+                clearTimeout(this.timerID);
+                
+                // UI Update
+                musicIconOn.classList.add('hidden');
+                musicIconOff.classList.remove('hidden');
+            },
+
+            toggle: function() {
+                if (this.isPlaying) this.stop();
+                else this.start();
+            }
+        };
+
+        function playSound(type) {
+            if (!isSfxEnabled) return; // Check if SFX is enabled
+
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'jump') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'score') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'crash') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        // --- Initialization ---
+        function init() {
+            // Setup Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(skyColor);
+            scene.fog = new THREE.Fog(skyColor, 20, 80);
+
+            // Setup Camera
+            // FOV, Aspect, Near, Far
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 150);
+            // Position camera for a slightly angled side-view (2.5D feel)
+            camera.position.set(-4, 0, 12); 
+            camera.lookAt(2, 0, 0);
+
+            // Setup Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            canvasContainer.appendChild(renderer.domElement);
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            dirLight.position.set(-10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 50;
+            // Adjust shadow camera frustum to cover the play area
+            dirLight.shadow.camera.left = -20;
+            dirLight.shadow.camera.right = 20;
+            dirLight.shadow.camera.top = 20;
+            dirLight.shadow.camera.bottom = -20;
+            scene.add(dirLight);
+
+            // Create World Elements
+            createBird();
+            createGround();
+            createRiver();
+            createClouds();
+            createMountains();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Interaction
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') handleInput(e); // FIX: Passed event object here
+            });
+            document.addEventListener('touchstart', handleInput, { passive: false });
+            document.addEventListener('mousedown', handleInput);
+
+            startBtn.addEventListener('click', startGame);
+            restartBtn.addEventListener('click', resetGame);
+            camBtn.addEventListener('click', toggleCamera);
+            musicBtn.addEventListener('click', () => {
+                MusicSystem.toggle();
+                // Blur button to prevent spacebar trigger
+                musicBtn.blur();
+            });
+            sfxBtn.addEventListener('click', () => {
+                isSfxEnabled = !isSfxEnabled;
+                if (isSfxEnabled) {
+                    sfxIconOn.classList.remove('hidden');
+                    sfxIconOff.classList.add('hidden');
+                } else {
+                    sfxIconOn.classList.add('hidden');
+                    sfxIconOff.classList.remove('hidden');
+                }
+                sfxBtn.blur();
+            });
+            
+            bestScoreEl.textContent = bestScore;
+
+            // Start Loop
+            requestAnimationFrame(animate);
+        }
+
+        // --- Object Creation ---
+        function createBird() {
+            const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+            const material = new THREE.MeshStandardMaterial({ color: birdColor, roughness: 0.1 });
+            bird = new THREE.Mesh(geometry, material);
+            bird.castShadow = true;
+            bird.receiveShadow = true;
+
+            // Add eye
+            const eyeGeo = new THREE.BoxGeometry(0.2, 0.2, 0.1);
+            const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const pupilMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+            
+            const eyeWhite = new THREE.Mesh(eyeGeo, eyeMat);
+            eyeWhite.position.set(0.2, 0.2, 0.4);
+            bird.add(eyeWhite);
+
+            const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.11), pupilMat);
+            pupil.position.set(0.05, 0, 0.05); // relative to white
+            eyeWhite.add(pupil);
+
+            // Add second eye (Left side)
+            const eyeWhiteL = new THREE.Mesh(eyeGeo, eyeMat);
+            eyeWhiteL.position.set(0.2, 0.2, -0.4); // Mirrored Z position
+            bird.add(eyeWhiteL);
+
+            // Add second pupil (Left side)
+            const pupilL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.11), pupilMat);
+            // FIX: Changed Z from 0.05 to -0.05 so it faces outward on the negative side
+            pupilL.position.set(0.05, 0, -0.05); 
+            eyeWhiteL.add(pupilL);
+
+            // Add beak
+            const beakGeo = new THREE.ConeGeometry(0.2, 0.4, 4);
+            const beakMat = new THREE.MeshStandardMaterial({ color: 0xff4500 }); // OrangeRed
+            const beak = new THREE.Mesh(beakGeo, beakMat);
+            beak.rotation.x = Math.PI / 2;
+            beak.rotation.z = -Math.PI / 4; // Point forward
+            beak.position.set(0.5, -0.1, 0);
+            bird.add(beak);
+
+            // Add Legs
+            // Reduced size by half: radius 0.025, height 0.15
+            const legGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.15, 8);
+            const legMat = new THREE.MeshStandardMaterial({ color: 0xff4500 }); // OrangeRed like beak
+
+            const legL = new THREE.Mesh(legGeo, legMat);
+            // Adjusted Y position slightly for new size and added backward rotation
+            // Moved X from 0.1 to -0.14 (30% of body size back)
+            legL.position.set(-0.14, -0.45, 0.15);
+            legL.rotation.z = -Math.PI / 4; // FLIPPED: Negative rotation to angle legs backwards
+            bird.add(legL);
+
+            const legR = new THREE.Mesh(legGeo, legMat);
+            // Adjusted Y position slightly for new size and added backward rotation
+            // Moved X from 0.1 to -0.14 (30% of body size back)
+            legR.position.set(-0.14, -0.45, -0.15);
+            legR.rotation.z = -Math.PI / 4; // FLIPPED: Negative rotation to angle legs backwards
+            bird.add(legR);
+
+            // Add slight wing
+            const wingGeo = new THREE.BoxGeometry(0.5, 0.3, 0.1);
+            const wingMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const wingR = new THREE.Mesh(wingGeo, wingMat);
+            wingR.position.set(-0.2, -0.1, 0.45);
+            bird.add(wingR);
+
+            const wingL = new THREE.Mesh(wingGeo, wingMat);
+            wingL.position.set(-0.2, -0.1, -0.45); // Mirrored Z position for the other side
+            bird.add(wingL);
+
+            scene.add(bird);
+            resetBird();
+        }
+
+        function createGround() {
+            // Create procedural dirt texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            // Base dark brown color
+            ctx.fillStyle = '#3f2f17';
+            ctx.fillRect(0, 0, 256, 256);
+            
+            // Add noise/grain for dirt texture
+            const imageData = ctx.getImageData(0, 0, 256, 256);
+            const pixels = imageData.data;
+            
+            for (let i = 0; i < pixels.length; i += 4) {
+                const variation = Math.random() * 40 - 20; // Random brightness variation
+                pixels[i] = Math.max(0, Math.min(255, 80 + variation));     // R (darker brown)
+                pixels[i + 1] = Math.max(0, Math.min(255, 60 + variation)); // G (darker brown)
+                pixels[i + 2] = Math.max(0, Math.min(255, 35 + variation));  // B (darker brown)
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Add some lighter patches for variation
+            // ctx.fillStyle = 'rgba(100, 80, 50, 0.5)';
+            // for (let i = 0; i < 50; i++) {
+            //     const x = Math.random() * 256;
+            //     const y = Math.random() * 256;
+            //     const size = Math.random() * 20 + 5;
+            //     ctx.beginPath();
+            //     ctx.arc(x, y, size, 0, Math.PI * 2);
+            //     ctx.fill();
+            // }
+            
+            const groundTexture = new THREE.CanvasTexture(canvas);
+            groundTexture.wrapS = THREE.RepeatWrapping;
+            groundTexture.wrapT = THREE.RepeatWrapping;
+            groundTexture.repeat.set(100, 20);
+
+            const geometry = new THREE.PlaneGeometry(200, 40);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, // White to let texture show through
+                map: groundTexture,
+                roughness: 0.9
+            });
+            groundMesh = new THREE.Mesh(geometry, material);
+            groundMesh.rotation.x = -Math.PI / 2;
+            groundMesh.position.y = -10;
+            groundMesh.receiveShadow = true;
+            scene.add(groundMesh);
+
+            // Decorate ground with moving props
+            const bushGeo = new THREE.DodecahedronGeometry(0.8); // Base geometry reused
+            const bushMat = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+            
+            for(let i=0; i<1000; i++) {
+                const scale = Math.random() * 0.8 + 0.5;
+                const bush = new THREE.Mesh(bushGeo, bushMat);
+                
+                // Spread out over a wide X range and deeper Z range
+                bush.position.set(Math.random() * 80 - 20, -9.5, Math.random() * 36 - 17);
+                bush.scale.set(scale, scale, scale);
+                
+                scene.add(bush);
+                groundProps.push(bush);
+            }
+        }
+
+        function createRiver() {
+            // Create flowing river texture with Jumpy Panada-style flow lines
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            
+            // Base water color (blue gradient)
+            const gradient = ctx.createLinearGradient(0, 0, 1024, 1024);
+            gradient.addColorStop(0, '#1a7fb5');
+            gradient.addColorStop(0.5, '#0d5a8a');
+            gradient.addColorStop(1, '#1a7fb5');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 1024, 1024);
+            
+            // Add sand/foam banks along edges (light tan lines)
+            ctx.strokeStyle = 'rgba(245, 221, 169, 0.4)';
+            ctx.lineWidth = 25;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            // Top sand bank
+            ctx.beginPath();
+            for (let x = 0; x < 1024; x += 10) {
+                const y = 80 + Math.sin(x * 0.008) * 25;
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            // Bottom sand bank
+            ctx.beginPath();
+            for (let x = 0; x < 1024; x += 10) {
+                const y = 944 - Math.sin(x * 0.008 + 2) * 25;
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            
+            // Draw flowing water lines (current/flow effect)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            
+            for (let lane = 0; lane < 8; lane++) {
+                ctx.beginPath();
+                const baseY = 150 + lane * 90;
+                for (let x = 0; x < 1024; x += 8) {
+                    const wave = Math.sin(x * 0.01 + lane * 0.5) * 20;
+                    const y = baseY + wave;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+            
+            // Add secondary flow lines (thinner, more subtle)
+            ctx.strokeStyle = 'rgba(200, 230, 255, 0.15)';
+            ctx.lineWidth = 1.5;
+            
+            for (let lane = 0; lane < 16; lane++) {
+                ctx.beginPath();
+                const baseY = 80 + lane * 55;
+                for (let x = 0; x < 1024; x += 6) {
+                    const wave = Math.sin(x * 0.015 + lane * 0.3) * 12;
+                    const y = baseY + wave;
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+            
+            // Add subtle noise/foam spots for texture
+            for (let i = 0; i < 150; i++) {
+                const x = Math.random() * 1024;
+                const y = Math.random() * 1024;
+                const size = Math.random() * 8 + 2;
+                ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.1})`;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Add pixel-level noise for fine texture detail
+            const imageData = ctx.getImageData(0, 0, 1024, 1024);
+            const pixels = imageData.data;
+            for (let i = 0; i < pixels.length; i += 4) {
+                const noise = Math.random() * 15 - 7.5;
+                pixels[i] = Math.max(0, Math.min(255, pixels[i] + noise));
+                pixels[i + 1] = Math.max(0, Math.min(255, pixels[i + 1] + noise));
+                pixels[i + 2] = Math.max(0, Math.min(255, pixels[i + 2] + noise));
+            }
+            ctx.putImageData(imageData, 0, 0);
+            
+            const riverTexture = new THREE.CanvasTexture(canvas);
+            riverTexture.wrapS = THREE.RepeatWrapping;
+            riverTexture.wrapT = THREE.RepeatWrapping;
+            riverTexture.repeat.set(3, 6); // Optimized repeat for flow effect
+            
+            // Create river plane - positioned between ground and mountains
+            const riverGeometry = new THREE.PlaneGeometry(300, 100);
+            const riverMaterial = new THREE.MeshStandardMaterial({
+                color: 0x2b8dc4,
+                map: riverTexture,
+                transparent: true,
+                opacity: 0.85,
+                roughness: 0.25,
+                metalness: 0.3
+            });
+            
+            riverMesh = new THREE.Mesh(riverGeometry, riverMaterial);
+            riverMesh.rotation.x = -Math.PI / 2;
+            riverMesh.position.set(0, -10.1, -30); // Below ground level, behind it
+            riverMesh.receiveShadow = true;
+            scene.add(riverMesh);
+        }
+
+        function createClouds() {
+            for (let i = 0; i < 100; i++) {
+                const cloud = new THREE.Group();
+                const blocks = Math.floor(Math.random() * 3) + 2;
+                
+                for(let j=0; j<blocks; j++) {
+                    const geo = new THREE.BoxGeometry(2, 1, 1);
+                    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+                    const part = new THREE.Mesh(geo, mat);
+                    part.position.x = j * 1.2;
+                    part.position.y = Math.random() * 0.5;
+                    cloud.add(part);
+                }
+
+                cloud.position.set(Math.random() * 40 + 10, Math.random() * 10 + 5, -5 - Math.random() * 35);
+                scene.add(cloud);
+                clouds.push({ mesh: cloud, speed: Math.random() * 0.5 + 0.1 });
+            }
+        }
+
+        function createMountains() {
+            // Create distant mountain range with more complex shapes
+            const mountainCount = 130; // 100 more mountains (was 30)
+            const mountainMat = new THREE.MeshStandardMaterial({ 
+                color: 0x423321, // Brown-gray for mountains
+                roughness: 0.9,
+                flatShading: true
+            });
+
+            for (let i = 0; i < mountainCount; i++) {
+                // Create more complex mountain shapes using groups of multiple peaks
+                const mountainGroup = new THREE.Group();
+                const peakCount = Math.floor(Math.random() * 3) + 2; // 2-4 peaks per mountain
+                
+                for (let p = 0; p < peakCount; p++) {
+                    const height = Math.random() * 35 + 10; // Vary from 10 to 45 (more variation)
+                    const radius = Math.random() * 6 + 3;
+                    
+                    // Use more segments for smoother, less pyramid-like appearance
+                    const segments = Math.floor(Math.random() * 4) + 6; // 6-9 segments
+                    const peakGeo = new THREE.ConeGeometry(radius, height, segments);
+                    const peak = new THREE.Mesh(peakGeo, mountainMat);
+                    
+                    // Offset peaks to create ridges
+                    peak.position.x = p * (Math.random() * 5 + 3);
+                    peak.position.y = height / 2 + Math.random() * 3;
+                    
+                    // Slight rotation for organic look
+                    peak.rotation.z = (Math.random() - 0.5) * 0.3;
+                    
+                    mountainGroup.add(peak);
+                }
+                
+                // Position far in the background (deep Z) with base touching water level
+                const xPos = Math.random() * 200 - 40;
+                const zPos = -45 - Math.random() * 20; // Far back but within fog range
+                mountainGroup.position.set(xPos, -10.1, zPos); // Y at -10.1 to align with water level
+                
+                // Random rotation for variety
+                mountainGroup.rotation.y = Math.random() * Math.PI * 2;
+                
+                scene.add(mountainGroup);
+                mountains.push({ mesh: mountainGroup, speed: 0.3 }); // Much slower movement
+            }
+        }
+
+        function createPipePair(xPos) {
+            const gapSize = 3.5; // Vertical space between pipes
+            const pipeRadius = 1.2;
+            const minHeight = 2;
+            const maxHeight = 10;
+            
+            // Random height for the gap center
+            const gapCenter = (Math.random() * (maxHeight - minHeight)) - (maxHeight/2) + 2;
+
+            const pipeMat = new THREE.MeshStandardMaterial({ 
+                color: pipeColor, 
+                roughness: 0.2,
+                transparent: true,
+                opacity: 1.0
+            });
+
+            // Top Pipe
+            const topHeight = 15; 
+            const topGeo = new THREE.CylinderGeometry(pipeRadius, pipeRadius, topHeight, 16);
+            const topPipe = new THREE.Mesh(topGeo, pipeMat);
+            topPipe.position.set(xPos, gapCenter + gapSize/2 + topHeight/2, 0);
+            topPipe.castShadow = true;
+            topPipe.receiveShadow = true;
+            
+            // Bottom Pipe
+            const bottomHeight = 15;
+            const bottomGeo = new THREE.CylinderGeometry(pipeRadius, pipeRadius, bottomHeight, 16);
+            const bottomPipe = new THREE.Mesh(bottomGeo, pipeMat);
+            bottomPipe.position.set(xPos, gapCenter - gapSize/2 - bottomHeight/2, 0);
+            bottomPipe.castShadow = true;
+            bottomPipe.receiveShadow = true;
+
+            // Rim logic (Top)
+            const rimGeo = new THREE.CylinderGeometry(pipeRadius + 0.2, pipeRadius + 0.2, 0.8, 16);
+            const rimTop = new THREE.Mesh(rimGeo, pipeMat);
+            rimTop.position.y = -topHeight/2 + 0.4;
+            topPipe.add(rimTop);
+
+            // Rim logic (Bottom)
+            const rimBottom = new THREE.Mesh(rimGeo, pipeMat);
+            rimBottom.position.y = bottomHeight/2 - 0.4;
+            bottomPipe.add(rimBottom);
+
+            scene.add(topPipe);
+            scene.add(bottomPipe);
+
+            return {
+                top: topPipe,
+                bottom: bottomPipe,
+                passed: false,
+                x: xPos,
+                spawnTime: Date.now() // Track when the pipe was created
+            };
+        }
+
+        function toggleCamera() {
+            // Reverted to simple 2-state toggle
+            cameraMode = cameraMode === 'SIDE' ? 'BEHIND' : 'SIDE';
+            // Unfocus button so spacebar doesn't trigger it again
+            camBtn.blur();
+        }
+
+        // --- Game Logic ---
+
+        function handleInput(e) {
+            // FIX: If e is not defined (called manually without args), return to avoid crash
+            if (!e) return;
+
+            // FIX: Check if target is a button first. 
+            // If it is, return immediately to let the default click event happen.
+            const target = e.target;
+            // Check target exists and is a button or inside a button
+            if (target && (target.tagName === 'BUTTON' || (target.closest && target.closest('button')))) return;
+
+            if (e && e.type === 'touchstart') e.preventDefault(); // Stop zoom on gameplay taps
+
+            if (gameState === 'START') {
+                startGame();
+            } else if (gameState === 'PLAYING') {
+                velocityY = jumpStrength;
+                playSound('jump');
+            } else if (gameState === 'GAMEOVER') {
+               // Do nothing, wait for restart button
+            }
+        }
+
+        function startGame() {
+            gameState = 'PLAYING';
+            startScreen.classList.add('hidden');
+            scoreDisplay.classList.remove('hidden');
+            scoreDisplay.textContent = '0';
+            
+            // Hide control buttons during gameplay
+            camBtn.classList.add('hidden');
+            musicBtn.classList.add('hidden');
+            sfxBtn.classList.add('hidden');
+            
+            resetGameVars();
+        }
+
+        function resetGame() {
+            gameOverScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+            scoreDisplay.classList.add('hidden');
+            gameState = 'START';
+            
+            // Show control buttons when not playing
+            camBtn.classList.remove('hidden');
+            musicBtn.classList.remove('hidden');
+            sfxBtn.classList.remove('hidden');
+            
+            resetBird();
+            
+            // Clear pipes
+            pipes.forEach(p => {
+                scene.remove(p.top);
+                scene.remove(p.bottom);
+            });
+            pipes = [];
+        }
+
+        function resetBird() {
+            bird.position.set(0, 0, 0);
+            bird.rotation.set(0, 0, 0);
+            velocityY = 0;
+        }
+
+        function resetGameVars() {
+            score = 0;
+            gameSpeed = 6;
+            timeSinceLastPipe = 0;
+            pipes = [];
+            pipes.push(createPipePair(10)); // Initial pipe added to array
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            playSound('crash');
+            
+            // Show control buttons on game over
+            camBtn.classList.remove('hidden');
+            musicBtn.classList.remove('hidden');
+            sfxBtn.classList.remove('hidden');
+            
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('flappy3d_best', bestScore);
+                bestScoreEl.textContent = bestScore;
+            } else {
+                bestScoreEl.textContent = bestScore;
+            }
+            
+            finalScoreEl.textContent = score;
+            scoreDisplay.classList.add('hidden');
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function update(dt) {
+            if (dt > 0.1) dt = 0.1; // Cap frame time
+
+            // --- Camera Logic ---
+            let targetX, targetY, targetZ, lookAtX, lookAtY, lookAtZ;
+
+            if (cameraMode === 'BEHIND') {
+                targetX = -8;
+                targetY = bird.position.y + 2;
+                targetZ = 0;
+                lookAtX = 10;
+                lookAtY = bird.position.y;
+                lookAtZ = 0;
+            } else {
+                // Standard SIDE (Default)
+                targetX = -4;
+                targetY = 0;
+                targetZ = 12;
+                lookAtX = 2;
+                lookAtY = 0;
+                lookAtZ = 0;
+            }
+
+            // Smooth Camera Movement
+            camera.position.x += (targetX - camera.position.x) * 5 * dt;
+            camera.position.y += (targetY - camera.position.y) * 5 * dt;
+            camera.position.z += (targetZ - camera.position.z) * 5 * dt;
+            camera.lookAt(lookAtX, lookAtY, lookAtZ);
+
+            // --- Cloud Animation (Always runs) ---
+            clouds.forEach(c => {
+                c.mesh.position.x -= c.speed * 5 * dt;
+                if (c.mesh.position.x < -20) {
+                    c.mesh.position.x = 40;
+                }
+            });
+
+            if (gameState !== 'PLAYING') {
+                // Idle animation for bird
+                if(gameState === 'START') {
+                    bird.position.y = Math.sin(Date.now() * 0.005) * 0.5;
+                    bird.rotation.x = 0;
+                    bird.rotation.z = 0;
+                }
+                return;
+            }
+
+            // --- Mountain Animation (Only during gameplay - parallax effect) ---
+            mountains.forEach(m => {
+                m.mesh.position.x -= m.speed * dt;
+                if (m.mesh.position.x < -40) {
+                    m.mesh.position.x = 120;
+                }
+            });
+
+            // --- Physics ---
+            velocityY += gravity * dt;
+            bird.position.y += velocityY * dt;
+
+            // Rotation
+            const targetRotation = THREE.MathUtils.clamp(velocityY * 0.1, -Math.PI / 4, Math.PI / 4);
+            bird.rotation.z = targetRotation;
+
+            // --- Ground Movement (Progression) ---
+            // Scroll texture at same pace as pipes (gameSpeed)
+            if (groundMesh.material.map) {
+                groundMesh.material.map.offset.x += (gameSpeed * dt) / 100;
+            }
+            
+            // Scroll river texture for flow effect
+            if (riverMesh && riverMesh.material.map) {
+                riverMesh.material.map.offset.x += (gameSpeed * dt) / 150; // Flows slightly faster
+                riverMesh.material.map.offset.y += (gameSpeed * dt) / 300; // Subtle diagonal flow
+            }
+            
+            // Scroll props (bushes)
+            groundProps.forEach(prop => {
+                prop.position.x -= gameSpeed * dt;
+                // Reset position to front if goes off screen
+                if (prop.position.x < -25) {
+                    prop.position.x = 55 + Math.random() * 10;
+                }
+            });
+
+            // --- Ground/Ceiling Collision ---
+            if (bird.position.y < -9 || bird.position.y > 12) {
+                gameOver();
+                return;
+            }
+
+            // --- Pipe Management ---
+            timeSinceLastPipe += dt;
+            if (timeSinceLastPipe > pipeSpawnRate) {
+                pipes.push(createPipePair(20)); // Spawn off screen to right and add to array
+                timeSinceLastPipe = 0;
+            }
+
+            // Move Pipes
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                const p = pipes[i];
+                p.x -= gameSpeed * dt;
+                p.top.position.x = p.x;
+                p.bottom.position.x = p.x;
+
+                // Fade-in effect for newly spawned pipes
+                const timeSinceSpawn = (Date.now() - p.spawnTime) / 1000; // Convert to seconds
+                const fadeInDuration = 0.5; // 0.5 seconds to fade in
+                let baseOpacity = 1.0;
+                
+                if (timeSinceSpawn < fadeInDuration) {
+                    baseOpacity = timeSinceSpawn / fadeInDuration;
+                }
+
+                // Opacity management for BEHIND mode - fade pipes when close
+                if (cameraMode === 'BEHIND') {
+                    const distanceToBird = p.x - bird.position.x;
+                    // Transition distance: start fading at 8 units, fully transparent at 3 units
+                    if (distanceToBird < 8 && distanceToBird > 0) {
+                        const fadeRange = 8;
+                        const fadeFactor = Math.max(0, (distanceToBird - 3) / fadeRange);
+                        const targetOpacity = 0.5 + (fadeFactor * 0.5); // Range from 0.3 to 1.0
+                        p.top.material.opacity = Math.min(baseOpacity, targetOpacity);
+                        p.bottom.material.opacity = Math.min(baseOpacity, targetOpacity);
+                    } else if (distanceToBird <= 0) {
+                        // Bird has passed the pipe, fade it completely
+                        p.top.material.opacity = 0;
+                        p.bottom.material.opacity = 0;
+                    } else {
+                        p.top.material.opacity = baseOpacity;
+                        p.bottom.material.opacity = baseOpacity;
+                    }
+                } else {
+                    // In SIDE mode, use base opacity (fade-in only)
+                    p.top.material.opacity = baseOpacity;
+                    p.bottom.material.opacity = baseOpacity;
+                }
+
+                // Cleanup - remove pipes based on camera mode
+                const cleanupThreshold = (cameraMode === 'BEHIND') ? -5 : -15;
+                if (p.x < cleanupThreshold) {
+                    scene.remove(p.top);
+                    scene.remove(p.bottom);
+                    pipes.splice(i, 1);
+                    continue;
+                }
+
+                // Collision Detection
+                const birdRadius = 0.35; 
+                const pipeRadius = 1.1;
+                
+                const distX = Math.abs(bird.position.x - p.x);
+                
+                if (distX < (birdRadius + pipeRadius)) {
+                    const topEdge = p.top.position.y - 7.5; 
+                    const bottomEdge = p.bottom.position.y + 7.5;
+                    
+                    if (bird.position.y + birdRadius > topEdge || bird.position.y - birdRadius < bottomEdge) {
+                        gameOver();
+                    }
+                }
+
+                // Score Logic
+                if (!p.passed && p.x < bird.position.x) {
+                    score++;
+                    scoreDisplay.textContent = score;
+                    p.passed = true;
+                    playSound('score');
+                    
+                    // Increase difficulty slightly
+                    if(score % 5 === 0) gameSpeed += 0.2;
+                }
+            }
+        }
+
+        // --- Animation Loop ---
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+
+            const dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            update(dt);
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Boot
+        init();
+
+    </script>
+</body>
+</html>

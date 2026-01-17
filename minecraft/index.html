@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebCraft - A Minecraft Clone</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/ui.css">
+</head>
+<body>
+    <!-- Main Menu -->
+    <div id="main-menu" class="menu-screen">
+        <div class="menu-container">
+            <h1 class="game-title">WebCraft</h1>
+            <div class="menu-buttons">
+                <button id="singleplayer-btn" class="menu-btn">Singleplayer</button>
+                <button id="multiplayer-btn" class="menu-btn">Multiplayer</button>
+                <button id="character-btn" class="menu-btn">Character Creator</button>
+                <button id="options-btn" class="menu-btn">Options</button>
+            </div>
+            <div class="version-info">WebCraft v1.0 - Three.js Edition</div>
+        </div>
+    </div>
+
+    <!-- World Selection Menu -->
+    <div id="world-menu" class="menu-screen hidden">
+        <div class="menu-container">
+            <h2>Select World</h2>
+            <div id="world-list" class="world-list">
+                <!-- Worlds will be dynamically loaded here -->
+            </div>
+            <div class="menu-buttons">
+                <button id="create-world-btn" class="menu-btn">Create New World</button>
+                <button id="back-to-main" class="menu-btn secondary">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create World Menu -->
+    <div id="create-world-menu" class="menu-screen hidden">
+        <div class="menu-container">
+            <h2>Create New World</h2>
+            <div class="form-group">
+                <label for="world-name">World Name:</label>
+                <input type="text" id="world-name" value="New World" class="text-input">
+            </div>
+            <div class="form-group">
+                <label for="world-seed">Seed (optional):</label>
+                <input type="text" id="world-seed" placeholder="Leave empty for random" class="text-input">
+            </div>
+            <div class="form-group">
+                <label for="world-type">World Type:</label>
+                <select id="world-type" class="select-input">
+                    <option value="default">Default</option>
+                    <option value="flat">Flat</option>
+                    <option value="amplified">Amplified</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="game-mode">Game Mode:</label>
+                <select id="game-mode" class="select-input">
+                    <option value="survival">Survival</option>
+                    <option value="creative">Creative</option>
+                </select>
+            </div>
+            <div class="menu-buttons">
+                <button id="start-world-btn" class="menu-btn">Create & Play</button>
+                <button id="back-to-worlds" class="menu-btn secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Multiplayer Menu -->
+    <div id="multiplayer-menu" class="menu-screen hidden">
+        <div class="menu-container">
+            <h2>Multiplayer</h2>
+            <p class="menu-subtitle">Join the shared world with other players!</p>
+            <div class="form-group">
+                <label for="player-name">Your Name:</label>
+                <input type="text" id="player-name" value="Steve" class="text-input" maxlength="16">
+            </div>
+            <div class="server-status" id="server-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Checking server...</span>
+            </div>
+            <div class="menu-buttons">
+                <button id="join-server-btn" class="menu-btn">Join World</button>
+                <button id="back-from-multi" class="menu-btn secondary">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Character Creator -->
+    <div id="character-menu" class="menu-screen hidden">
+        <div class="menu-container wide">
+            <h2>Character Creator</h2>
+            <div class="character-creator">
+                <div class="character-preview">
+                    <canvas id="character-canvas"></canvas>
+                </div>
+                <div class="character-options">
+                    <div class="form-group">
+                        <label>Choose Character:</label>
+                        <div class="character-presets" id="character-presets">
+                            <button class="preset-btn" data-preset="sunny" title="Sunny">
+                                <div class="preset-avatar sunny"></div>
+                                <span>Sunny</span>
+                            </button>
+                            <button class="preset-btn" data-preset="kai" title="Kai">
+                                <div class="preset-avatar kai"></div>
+                                <span>Kai</span>
+                            </button>
+                            <button class="preset-btn" data-preset="makena" title="Makena">
+                                <div class="preset-avatar makena"></div>
+                                <span>Makena</span>
+                            </button>
+                            <button class="preset-btn active" data-preset="steve" title="Steve">
+                                <div class="preset-avatar steve"></div>
+                                <span>Steve</span>
+                            </button>
+                            <button class="preset-btn" data-preset="alex" title="Alex">
+                                <div class="preset-avatar alex"></div>
+                                <span>Alex</span>
+                            </button>
+                            <button class="preset-btn" data-preset="zuri" title="Zuri">
+                                <div class="preset-avatar zuri"></div>
+                                <span>Zuri</span>
+                            </button>
+                            <button class="preset-btn" data-preset="efe" title="Efe">
+                                <div class="preset-avatar efe"></div>
+                                <span>Efe</span>
+                            </button>
+                            <button class="preset-btn" data-preset="ari" title="Ari">
+                                <div class="preset-avatar ari"></div>
+                                <span>Ari</span>
+                            </button>
+                            <button class="preset-btn" data-preset="noor" title="Noor">
+                                <div class="preset-avatar noor"></div>
+                                <span>Noor</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Customize Colors:</label>
+                    </div>
+                    <div class="form-group">
+                        <label>Skin Color:</label>
+                        <input type="color" id="skin-color" value="#c4a484" class="color-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Shirt Color:</label>
+                        <input type="color" id="shirt-color" value="#00aaff" class="color-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Pants Color:</label>
+                        <input type="color" id="pants-color" value="#3333aa" class="color-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Hair Color:</label>
+                        <input type="color" id="hair-color" value="#4a3728" class="color-input">
+                    </div>
+                </div>
+            </div>
+            <div class="menu-buttons">
+                <button id="save-character" class="menu-btn">Save Character</button>
+                <button id="back-from-character" class="menu-btn secondary">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Options Menu -->
+    <div id="options-menu" class="menu-screen hidden">
+        <div class="menu-container">
+            <h2>Options</h2>
+            <div class="options-list">
+                <div class="option-item">
+                    <label>Render Distance:</label>
+                    <input type="range" id="render-distance" min="2" max="16" value="8">
+                    <span id="render-distance-value">8</span>
+                </div>
+                <div class="option-item">
+                    <label>FOV:</label>
+                    <input type="range" id="fov" min="30" max="110" value="70">
+                    <span id="fov-value">70</span>
+                </div>
+                <div class="option-item">
+                    <label>Mouse Sensitivity:</label>
+                    <input type="range" id="sensitivity" min="1" max="100" value="50">
+                    <span id="sensitivity-value">50</span>
+                </div>
+                <div class="option-item">
+                    <label>Music Volume:</label>
+                    <input type="range" id="music-volume" min="0" max="100" value="50">
+                    <span id="music-volume-value">50%</span>
+                </div>
+                <div class="option-item">
+                    <label>Sound Effects:</label>
+                    <input type="range" id="sfx-volume" min="0" max="100" value="100">
+                    <span id="sfx-volume-value">100%</span>
+                </div>
+                <div class="option-item">
+                    <label>Shadows:</label>
+                    <select id="shadow-quality" class="select-input">
+                        <option value="off">Off</option>
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+                <div class="option-item">
+                    <label>VSync:</label>
+                    <input type="checkbox" id="vsync" checked>
+                </div>
+            </div>
+            <div class="menu-buttons">
+                <button id="save-options" class="menu-btn">Save</button>
+                <button id="back-from-options" class="menu-btn secondary">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="menu-screen hidden">
+        <div class="loading-container">
+            <h2>Loading World...</h2>
+            <div class="loading-bar">
+                <div id="loading-progress" class="loading-progress"></div>
+            </div>
+            <div id="loading-text">Generating terrain...</div>
+        </div>
+    </div>
+
+    <!-- Game Container -->
+    <div id="game-container" class="hidden">
+        <canvas id="game-canvas"></canvas>
+        
+        <!-- Click to Play Overlay -->
+        <div id="click-to-play" class="click-overlay">
+            <div class="click-message">
+                <h2>🎮 Click to Play</h2>
+                <p>Click anywhere to start</p>
+                <p class="controls-hint">WASD to move • Space to jump • Mouse to look</p>
+            </div>
+        </div>
+        
+        <!-- World Loading Progress -->
+        <div id="world-loading-hud" class="world-loading-hud">
+            <div class="loading-text">Generating world...</div>
+            <div class="loading-bar-small">
+                <div id="world-loading-progress" class="loading-progress-small"></div>
+            </div>
+            <div id="world-loading-percent">0%</div>
+        </div>
+        
+        <!-- HUD -->
+        <div id="hud">
+            <!-- Crosshair -->
+            <div id="crosshair">+</div>
+            
+            <!-- Health Bar -->
+            <div id="health-bar" class="stat-bar">
+                <div class="hearts"></div>
+            </div>
+            
+            <!-- Hunger Bar -->
+            <div id="hunger-bar" class="stat-bar">
+                <div class="hunger"></div>
+            </div>
+            
+            <!-- Experience Bar -->
+            <div id="exp-bar">
+                <div id="exp-progress"></div>
+                <span id="exp-level">0</span>
+            </div>
+            
+            <!-- Hotbar -->
+            <div id="hotbar">
+                <div class="hotbar-slot selected" data-slot="0"></div>
+                <div class="hotbar-slot" data-slot="1"></div>
+                <div class="hotbar-slot" data-slot="2"></div>
+                <div class="hotbar-slot" data-slot="3"></div>
+                <div class="hotbar-slot" data-slot="4"></div>
+                <div class="hotbar-slot" data-slot="5"></div>
+                <div class="hotbar-slot" data-slot="6"></div>
+                <div class="hotbar-slot" data-slot="7"></div>
+                <div class="hotbar-slot" data-slot="8"></div>
+            </div>
+            
+            <!-- Debug Info -->
+            <div id="debug-info" class="hidden">
+                <div id="fps">FPS: 0</div>
+                <div id="position">XYZ: 0 / 0 / 0</div>
+                <div id="chunk-info">Chunk: 0, 0</div>
+                <div id="biome-info">Biome: Plains</div>
+                <div id="block-info">Looking at: Air</div>
+            </div>
+            
+            <!-- Chat -->
+            <div id="chat-container">
+                <div id="chat-messages"></div>
+                <input type="text" id="chat-input" class="hidden" placeholder="Press T to chat...">
+            </div>
+        </div>
+        
+        <!-- Inventory Screen -->
+        <div id="inventory-screen" class="game-menu hidden">
+            <div class="inventory-container">
+                <div class="inventory-left">
+                    <div class="player-preview">
+                        <canvas id="inventory-player-canvas"></canvas>
+                    </div>
+                    <div class="armor-slots">
+                        <div class="armor-slot" data-slot="helmet"></div>
+                        <div class="armor-slot" data-slot="chestplate"></div>
+                        <div class="armor-slot" data-slot="leggings"></div>
+                        <div class="armor-slot" data-slot="boots"></div>
+                    </div>
+                    <div class="crafting-small">
+                        <div class="crafting-grid small">
+                            <div class="craft-slot" data-slot="0"></div>
+                            <div class="craft-slot" data-slot="1"></div>
+                            <div class="craft-slot" data-slot="2"></div>
+                            <div class="craft-slot" data-slot="3"></div>
+                        </div>
+                        <div class="craft-arrow">→</div>
+                        <div class="craft-result"></div>
+                    </div>
+                </div>
+                <div class="inventory-right">
+                    <div class="inventory-grid">
+                        <!-- 27 inventory slots -->
+                    </div>
+                    <div class="hotbar-grid">
+                        <!-- 9 hotbar slots -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Crafting Table Screen -->
+        <div id="crafting-screen" class="game-menu hidden">
+            <div class="crafting-container">
+                <h3>Crafting</h3>
+                <div class="crafting-area">
+                    <div class="crafting-grid large">
+                        <!-- 9 crafting slots -->
+                    </div>
+                    <div class="craft-arrow">→</div>
+                    <div class="craft-result large"></div>
+                </div>
+                <div class="inventory-area">
+                    <div class="inventory-grid"></div>
+                    <div class="hotbar-grid"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pause Menu -->
+        <div id="pause-menu" class="game-menu hidden">
+            <div class="pause-container">
+                <h2>Game Paused</h2>
+                <div class="menu-buttons">
+                    <button id="resume-btn" class="menu-btn">Resume</button>
+                    <button id="pause-options-btn" class="menu-btn">Options</button>
+                    <button id="save-quit-btn" class="menu-btn">Save and Quit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
+        }
+    }
+    </script>
+    
+    <!-- Game Scripts -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
