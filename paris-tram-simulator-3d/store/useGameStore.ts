@@ -1,6 +1,6 @@
 
 import { create } from 'zustand';
-import { STOPS, ROUTE_IDS } from '../constants';
+import { STOPS, ROUTE_IDS, TRACKS, MAP_NODES } from '../constants';
 import { ScoreFloatingText } from '../types';
 
 // Mutable object for high-frequency updates (avoiding React state thrashing)
@@ -12,6 +12,13 @@ export const tramRealtimeData = {
     currentTrackId: 0,
     positionOnTrack: 0
 };
+
+export type SignalMode = 'STOP' | 'SLOW' | 'GO_STRAIGHT' | 'GO_LEFT' | 'GO_RIGHT';
+
+export interface TrafficLightStatus {
+    phase: 'RED' | 'YELLOW' | 'GREEN';
+    axis: 'A' | 'B';
+}
 
 interface QueuedPassenger {
     id: number;
@@ -51,6 +58,7 @@ interface GameState {
 
     showMinimap: boolean;
     musicEnabled: boolean;
+    viewDistance: number;
 
     // Navigation
     activeRouteIndex: number; // Index in the ROUTE_IDS array
@@ -59,6 +67,7 @@ interface GameState {
     stopQueues: Record<number, QueuedPassenger[]>; // StopID -> Array of passenger data
 
     platformSide: 'left' | 'right' | null;
+    minimapLabelMode: 'stations' | 'roads';
 
     // Actions
     setSpeed: (speed: number) => void;
@@ -77,7 +86,9 @@ interface GameState {
     toggleWindows: () => void;
     toggleEBrake: () => void;
     toggleMinimap: () => void;
+    toggleMinimapLabelMode: () => void;
     toggleMusic: () => void;
+    setViewDistance: (dist: number) => void;
 
     setIndicator: (side: 'left' | 'right' | 'none') => void;
     setWeather: (weather: 'Clear' | 'Rain' | 'Snow') => void;
@@ -91,6 +102,15 @@ interface GameState {
 
     debugMode: boolean;
     toggleDebugMode: () => void;
+
+    teleportTrackId: number | null;
+    requestTeleport: (trackId: number) => void;
+    clearTeleportRequest: () => void;
+
+    // Traffic Light System
+    trafficCycleTime: number; // 0 to 20 seconds
+    getSignalMode: (trackId: number) => SignalMode;
+    updateTrafficCycle: (delta: number) => void;
 }
 
 const CONDUCTOR_MESSAGES = {
@@ -135,8 +155,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     timeOfDay: 10.0, // Start at 10:00 AM
 
     musicEnabled: localStorage.getItem('musicEnabled') === 'true', // Default false
+    viewDistance: 600, // Default to a reasonable medium value
 
     platformSide: null,
+    minimapLabelMode: 'stations',
 
     stopQueues: STOPS.reduce((acc, stop) => {
         const count = Math.floor(Math.random() * 5) + 2;
@@ -197,12 +219,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     toggleWindows: () => set((state) => ({ windowsOpen: !state.windowsOpen })),
     toggleEBrake: () => set((state) => ({ eBrakeActive: !state.eBrakeActive })),
     toggleMinimap: () => set((state) => ({ showMinimap: !state.showMinimap })),
+    toggleMinimapLabelMode: () => set((state) => ({
+        minimapLabelMode: state.minimapLabelMode === 'stations' ? 'roads' : 'stations'
+    })),
 
     toggleMusic: () => set((state) => {
         const newVal = !state.musicEnabled;
         localStorage.setItem('musicEnabled', String(newVal));
         return { musicEnabled: newVal };
     }),
+
+    setViewDistance: (dist) => set({ viewDistance: dist }),
 
     setIndicator: (side) => set((state) => {
         if (side === 'left') return { indicatorLeft: !state.indicatorLeft, indicatorRight: false };
@@ -281,5 +308,47 @@ export const useGameStore = create<GameState>((set, get) => ({
     setSoapEffectEndTime: (time) => set({ soapEffectEndTime: time }),
 
     debugMode: false,
-    toggleDebugMode: () => set((state) => ({ debugMode: !state.debugMode }))
+    toggleDebugMode: () => set((state) => ({ debugMode: !state.debugMode })),
+
+    teleportTrackId: null,
+    requestTeleport: (trackId) => set({ teleportTrackId: trackId }),
+    clearTeleportRequest: () => set({ teleportTrackId: null }),
+
+    trafficCycleTime: 0,
+    updateTrafficCycle: (delta) => set((state) => ({
+        trafficCycleTime: (state.trafficCycleTime + delta) % 20
+    })),
+    getSignalMode: (trackId) => {
+        const state = get();
+        const t = state.trafficCycleTime;
+
+        // Find the track to determine its direction
+        const track = TRACKS.find(tr => tr.id === trackId);
+        if (!track) return 'STOP';
+
+        const start = MAP_NODES[track.from];
+        const end = MAP_NODES[track.to];
+        const dx = Math.abs(end.x - start.x);
+        const dz = Math.abs(end.z - start.z);
+
+        // Determine axis: A is North-South (mostly Z change), B is East-West (mostly X change)
+        const axis = dz > dx ? 'A' : 'B';
+
+        // Cycle: 20s total
+        // 0-8: A Go, B Stop
+        // 8-10: A Slow, B Stop
+        // 10-18: A Stop, B Go
+        // 18-20: A Stop, B Slow
+
+        if (axis === 'A') {
+            if (t < 8) return 'GO_STRAIGHT';
+            if (t < 10) return 'SLOW';
+            return 'STOP';
+        } else {
+            if (t < 10) return 'STOP';
+            if (t < 18) return 'GO_STRAIGHT';
+            if (t < 20) return 'SLOW';
+            return 'STOP';
+        }
+    }
 }));

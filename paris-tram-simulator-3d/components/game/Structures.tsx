@@ -1,6 +1,7 @@
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { useGLTF } from '@react-three/drei';
 import TramMesh from './TramMesh';
 
 // Tram Garage Component
@@ -158,4 +159,26 @@ export const TramWash: React.FC<{ position: [number, number, number], rotation?:
             </points>
         </group>
     );
+};
+
+// Eiffel Tower Component
+export const EiffelTower: React.FC<{ position: [number, number, number], scale?: number, rotation?: number }> = ({ position, scale = 1, rotation = 0 }) => {
+    // In Vite, importing a .glb with ?url suffix or just importing it usually works.
+    // If we use the public path directly, it should also work if served.
+    const { scene } = useGLTF('/model/free__la_tour_eiffel.glb');
+
+    // Create a clone to avoid sharing state if multiple towers are placed
+    const clonedScene = useMemo(() => scene.clone(), [scene]);
+
+    // Apply materials/shadows if needed
+    useMemo(() => {
+        clonedScene.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+    }, [clonedScene]);
+
+    return <primitive object={clonedScene} position={position} scale={[scale, scale, scale]} rotation-y={rotation} />;
 };

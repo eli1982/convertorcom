@@ -51,6 +51,154 @@ const Headlights: React.FC<{ lightsOn: boolean, target: THREE.Object3D }> = ({ l
     );
 };
 
+interface SoapBubblesProps {
+    tramRef: React.RefObject<THREE.Group>;
+}
+
+const SoapBubbles: React.FC<SoapBubblesProps> = ({ tramRef }) => {
+    const bubblesRef = React.useRef<THREE.Points>(null);
+    const soapEffectEndTime = useGameStore(state => state.soapEffectEndTime);
+
+    // Increased particle count for a more trail-like effect
+    const particleCount = 1000;
+    const particles = React.useMemo(() => {
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const spawnTimes = new Float32Array(particleCount);
+
+        // Start all far below ground/invisible
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3 + 1] = -100;
+            spawnTimes[i] = 0;
+            // Init black (invisible with additive blending)
+            colors[i * 3] = 0;
+            colors[i * 3 + 1] = 0;
+            colors[i * 3 + 2] = 0;
+        }
+
+        return { positions, velocities, colors, spawnTimes };
+    }, []);
+
+    const nextParticleIndex = React.useRef(0);
+
+    // Reuse vectors to avoid GC pressure
+    const _tramPos = React.useMemo(() => new THREE.Vector3(), []);
+    const _tramQuat = React.useMemo(() => new THREE.Quaternion(), []);
+    const _localOffset = React.useMemo(() => new THREE.Vector3(), []);
+
+    useFrame((state, delta) => {
+        if (!bubblesRef.current || !tramRef.current) return;
+
+        // Force a matrix update to ensure we have the absolute latest world position/rotation
+        tramRef.current.updateMatrixWorld(true);
+
+        const colorAttr = bubblesRef.current.geometry.attributes.color;
+        const colorArray = colorAttr.array as Float32Array;
+
+        const posAttr = bubblesRef.current.geometry.attributes.position;
+        const array = posAttr.array as Float32Array;
+        const now = Date.now();
+        const isActive = now < soapEffectEndTime;
+
+        // Emit new bubbles if active
+        if (isActive) {
+            // Get current world transform of the tram
+            tramRef.current.getWorldPosition(_tramPos);
+            tramRef.current.getWorldQuaternion(_tramQuat);
+
+            // Emit multiple bubbles per frame to create a dense trail if moving
+            const emitCount = 5;
+            for (let j = 0; j < emitCount; j++) {
+                const i = nextParticleIndex.current;
+
+                // Random offset within tram bounds (local space)
+                // Tram is ~12m long (X), ~3.5m high (Y), ~2.8m wide (Z)
+                // Offset slightly inwards to look like they're coming off the body
+                const lx = (Math.random() - 0.5) * 11.5;
+                const ly = 0.5 + Math.random() * 3.5;
+                const lz = (Math.random() - 0.5) * 2.7;
+
+                // Transform local offset to world space
+                _localOffset.set(lx, ly, lz).applyQuaternion(_tramQuat);
+
+                // Spawn at World Position
+                array[i * 3] = _tramPos.x + _localOffset.x;
+                array[i * 3 + 1] = _tramPos.y + _localOffset.y;
+                array[i * 3 + 2] = _tramPos.z + _localOffset.z;
+
+                // Reset color to white
+                colorArray[i * 3] = 1;
+                colorArray[i * 3 + 1] = 1;
+                colorArray[i * 3 + 2] = 1;
+
+                // Slight random drift + buoyancy
+                particles.velocities[i * 3] = (Math.random() - 0.5) * 0.05;
+                particles.velocities[i * 3 + 1] = Math.random() * 0.04 + 0.01; // Float up slowly
+                particles.velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.05;
+                particles.spawnTimes[i] = now;
+
+                nextParticleIndex.current = (nextParticleIndex.current + 1) % particleCount;
+            }
+        }
+
+        // Update existing bubbles (lifespan 5 seconds)
+        for (let i = 0; i < particleCount; i++) {
+            const age = now - particles.spawnTimes[i];
+            if (age < 5000) {
+                array[i * 3] += particles.velocities[i * 3];
+                array[i * 3 + 1] += particles.velocities[i * 3 + 1];
+                array[i * 3 + 2] += particles.velocities[i * 3 + 2];
+
+                // Fading logic: Start fading at 3s (last 2s of 5s life)
+                let brightness = 1.0;
+                if (age > 3000) {
+                    brightness = 1.0 - (age - 3000) / 2000;
+                    brightness = Math.max(0, brightness);
+                }
+                colorArray[i * 3] = brightness;
+                colorArray[i * 3 + 1] = brightness;
+                colorArray[i * 3 + 2] = brightness;
+            } else {
+                // Kill (hide)
+                array[i * 3 + 1] = -100;
+                colorArray[i * 3] = 0;
+                colorArray[i * 3 + 1] = 0;
+                colorArray[i * 3 + 2] = 0;
+            }
+        }
+        posAttr.needsUpdate = true;
+        colorAttr.needsUpdate = true;
+    });
+
+    return (
+        <points ref={bubblesRef} frustumCulled={false}>
+            <bufferGeometry>
+                <bufferAttribute
+                    attach="attributes-position"
+                    count={particleCount}
+                    array={particles.positions}
+                    itemSize={3}
+                />
+                <bufferAttribute
+                    attach="attributes-color"
+                    count={particleCount}
+                    array={particles.colors}
+                    itemSize={3}
+                />
+            </bufferGeometry>
+            <pointsMaterial
+                vertexColors={true}
+                size={0.18}
+                transparent
+                opacity={0.8}
+                blending={THREE.NormalBlending}
+                depthWrite={false}
+            />
+        </points>
+    );
+};
+
 const Tram: React.FC = () => {
     const group = useRef<THREE.Group>(null);
     const meshGroup = useRef<THREE.Group>(null);
@@ -79,7 +227,8 @@ const Tram: React.FC = () => {
         targetSpeed: 0,
         currentTrackId: 0,
         positionOnTrack: 0,
-        rotation: 0
+        rotation: 0,
+        lastViolationTrackId: -1
     });
 
     const boardingTimer = useRef(0);
@@ -90,7 +239,8 @@ const Tram: React.FC = () => {
         setSpeed, setPower, setNextStop, doorsOpen, rampExtended, pantographUp, lightsOn, wipersOn,
         windowsOpen, indicatorLeft, indicatorRight, traction, eBrakeActive,
         toggleDoors, toggleRamp, togglePantograph, toggleLights, toggleWipers, toggleWindows, toggleEBrake, setIndicator,
-        boardPassengers, showMessage, addScore, setPlatformSide, platformSide, toggleMinimap, stopQueues, advanceActiveStop, toggleDebugMode
+        boardPassengers, showMessage, addScore, setPlatformSide, platformSide, toggleMinimap, stopQueues, advanceActiveStop, toggleDebugMode,
+        teleportTrackId, clearTeleportRequest
     } = useGameStore(useShallow(state => ({
         setSpeed: state.setSpeed,
         setPower: state.setPower,
@@ -121,8 +271,39 @@ const Tram: React.FC = () => {
         toggleMinimap: state.toggleMinimap,
         stopQueues: state.stopQueues,
         advanceActiveStop: state.advanceActiveStop,
-        toggleDebugMode: state.toggleDebugMode
+        toggleDebugMode: state.toggleDebugMode,
+        teleportTrackId: state.teleportTrackId,
+        clearTeleportRequest: state.clearTeleportRequest
     })));
+
+    // Handle Teleportation Request
+    useEffect(() => {
+        if (teleportTrackId !== null) {
+            const track = TRACKS.find(tr => tr.id === teleportTrackId);
+            if (track) {
+                const s = MAP_NODES[track.from];
+                const e = MAP_NODES[track.to];
+                const angle = Math.atan2(e.z - s.z, e.x - s.x);
+
+                // Update local physics state
+                physics.current.currentTrackId = teleportTrackId;
+                physics.current.positionOnTrack = 0;
+                physics.current.speed = 0;
+                physics.current.targetSpeed = 0;
+                physics.current.rotation = -angle;
+
+                // Sync the immediate position for camera and indicator
+                tramRealtimeData.x = s.x;
+                tramRealtimeData.z = s.z;
+                tramRealtimeData.rotation = -angle;
+                tramRealtimeData.currentTrackId = teleportTrackId;
+                tramRealtimeData.positionOnTrack = 0;
+
+                showMessage(`Teleported to Road ${teleportTrackId}`);
+            }
+            clearTeleportRequest();
+        }
+    }, [teleportTrackId, clearTeleportRequest, showMessage]);
 
     const handleToggleDoors = () => {
         if (Math.abs(physics.current.speed) < 0.5) {
@@ -275,7 +456,11 @@ const Tram: React.FC = () => {
         };
     }, []);
 
-    const getNextTrack = (currentId: number) => TRACKS.filter(t => t.from === TRACKS[currentId].to);
+    const getNextTrack = (currentId: number) => {
+        const currentTrack = TRACKS.find(t => t.id === currentId);
+        if (!currentTrack) return [];
+        return TRACKS.filter(t => t.from === currentTrack.to);
+    };
 
 
     // Light Refs for Direct Manipulation
@@ -300,7 +485,7 @@ const Tram: React.FC = () => {
             debugCameraMode.current = false;
         }
 
-        const TARGET_SPEED_CHANGE_RATE = 40 * dt; // Change target by ~40 km/h per second
+        const TARGET_SPEED_CHANGE_RATE = 100 * dt; // Change target by ~100 km/h per second
 
         // Input Handling for Target Speed
         if (keys.current['KeyW']) {
@@ -313,27 +498,45 @@ const Tram: React.FC = () => {
             } else if (!pantographUp) {
                 showMessage("Raise Pantograph for power!");
                 p.targetSpeed = 0;
+            } else if (eBrakeActive) {
+                showMessage("Release E-Brake (N) to move!");
+                p.targetSpeed = 0;
             } else {
                 p.targetSpeed += TARGET_SPEED_CHANGE_RATE;
             }
         }
         else if (keys.current['KeyS']) {
             p.targetSpeed -= TARGET_SPEED_CHANGE_RATE;
+        } else {
+            // Auto-stop at low speeds if no keys pressed
+            if (Math.abs(p.speed) <= 25 && p.targetSpeed !== 0) {
+                const autoStopRate = TARGET_SPEED_CHANGE_RATE * 0.5;
+                if (p.targetSpeed > 0) {
+                    p.targetSpeed = Math.max(0, p.targetSpeed - autoStopRate);
+                } else if (p.targetSpeed < 0) {
+                    p.targetSpeed = Math.min(0, p.targetSpeed + autoStopRate);
+                }
+            }
         }
 
         // Clamp Target Speed (-20 to Max)
         p.targetSpeed = Math.max(-20, Math.min(GAME_CONFIG.maxSpeed, p.targetSpeed));
 
         // Emergency Blockers check (Continuous safety)
-        if (doorsOpen || rampExtended || !pantographUp) {
+        if (doorsOpen || rampExtended || !pantographUp || eBrakeActive) {
             // Force target to 0 if state changes while moving
             p.targetSpeed = 0;
         }
 
         if (eBrakeActive) {
             p.targetSpeed = 0;
-            if (Math.abs(p.speed) > 0) p.speed -= Math.sign(p.speed) * GAME_CONFIG.deceleration * 3;
-            if (Math.abs(p.speed) < 0.1) p.speed = 0;
+            powerInput = -1; // Visual max brake
+            // Emergency brake: stop nearly immediately (Stops from 120km/h in ~3 frames)
+            if (Math.abs(p.speed) < GAME_CONFIG.eBrakePower) {
+                p.speed = 0;
+            } else {
+                p.speed -= Math.sign(p.speed) * GAME_CONFIG.eBrakePower;
+            }
         } else {
             const diff = p.targetSpeed - p.speed;
             const speedDeadzone = 0.2;
@@ -396,7 +599,24 @@ const Tram: React.FC = () => {
         const moveDist = (p.speed * 1000 / 3600) * dt;
         p.positionOnTrack += moveDist;
 
-        const currentTrack = TRACKS[p.currentTrackId];
+        const currentTrack = TRACKS.find(t => t.id === p.currentTrackId);
+        if (!currentTrack) return;
+
+        // Signal Violation Check
+        const signalMode = useGameStore.getState().getSignalMode(p.currentTrackId);
+        const distToEnd = currentTrack.length - p.positionOnTrack;
+        if (distToEnd < 4 && distToEnd > 0 && signalMode === 'STOP' && p.speed > 2) {
+            if (p.lastViolationTrackId !== p.currentTrackId) {
+                showMessage("SIGNAL VIOLATION! Stop at Red.");
+                addScore(-20, "Signal Jumped");
+                p.lastViolationTrackId = p.currentTrackId;
+            }
+        }
+
+        // Reset violation flag when entering middle of track
+        if (p.positionOnTrack > 10 && p.positionOnTrack < currentTrack.length - 10) {
+            p.lastViolationTrackId = -1;
+        }
         const s = MAP_NODES[currentTrack.from];
         const e = MAP_NODES[currentTrack.to];
 
@@ -468,7 +688,8 @@ const Tram: React.FC = () => {
             }
         }
 
-        const activeTrack = TRACKS[p.currentTrackId];
+        const activeTrack = TRACKS.find(t => t.id === p.currentTrackId);
+        if (!activeTrack) return;
         const s2 = MAP_NODES[activeTrack.from];
         const e2 = MAP_NODES[activeTrack.to];
         const t = p.positionOnTrack / activeTrack.length;
@@ -498,7 +719,7 @@ const Tram: React.FC = () => {
             // Check Wash Proximity
             const washPos = new THREE.Vector3(-35, 0, -100);
             if (group.current.position.distanceTo(washPos) < 10) {
-                useGameStore.getState().setSoapEffectEndTime(Date.now() + 35000);
+                useGameStore.getState().setSoapEffectEndTime(Date.now() + 5000);
             }
         }
 
@@ -600,22 +821,25 @@ const Tram: React.FC = () => {
 
 
     return (
-        <group ref={group}>
-            <TramMesh
-                ref={meshGroup}
-                lightsOn={lightsOn}
-                doorsOpen={doorsOpen}
-                rampExtended={rampExtended}
-                pantographUp={pantographUp}
-                wipersOn={wipersOn}
-                windowsOpen={windowsOpen}
-                platformSide={platformSide}
-                excludeBulbs={true}
-                onToggleDoors={handleToggleDoors}
-            >
-                <Headlights lightsOn={lightsOn} target={spotLightTarget.current} />
-            </TramMesh>
-        </group>
+        <>
+            <group ref={group}>
+                <TramMesh
+                    ref={meshGroup}
+                    lightsOn={lightsOn}
+                    doorsOpen={doorsOpen}
+                    rampExtended={rampExtended}
+                    pantographUp={pantographUp}
+                    wipersOn={wipersOn}
+                    windowsOpen={windowsOpen}
+                    platformSide={platformSide || 'right'}
+                    excludeBulbs={true}
+                    onToggleDoors={handleToggleDoors}
+                >
+                    <Headlights lightsOn={lightsOn} target={spotLightTarget.current} />
+                </TramMesh>
+            </group>
+            <SoapBubbles tramRef={meshGroup} />
+        </>
     );
 };
 

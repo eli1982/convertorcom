@@ -32,13 +32,22 @@ const DAY_CYCLE = [
 ];
 
 const Weather: React.FC = () => {
-    const { weather, setWeather, timeOfDay, setTimeOfDay } = useGameStore(useShallow(state => ({
+    const { weather, setWeather, timeOfDay, setTimeOfDay, viewDistance } = useGameStore(useShallow(state => ({
         weather: state.weather,
         setWeather: state.setWeather,
         timeOfDay: state.timeOfDay,
-        setTimeOfDay: state.setTimeOfDay
+        setTimeOfDay: state.setTimeOfDay,
+        viewDistance: state.viewDistance
     })));
     const { scene, camera } = useThree();
+
+    // Update camera Far clip plane when viewDistance changes
+    useEffect(() => {
+        if (camera instanceof THREE.PerspectiveCamera) {
+            camera.far = viewDistance;
+            camera.updateProjectionMatrix();
+        }
+    }, [camera, viewDistance]);
 
     const snowPoints = useRef<THREE.Points>(null);
     const rainLines = useRef<THREE.LineSegments>(null);
@@ -208,7 +217,15 @@ const Weather: React.FC = () => {
             targetAmb = targetAmb.clone().lerp(snowAmb, 0.5 * s);
         }
 
-        scene.fog = new THREE.FogExp2(targetSky, targetFog);
+
+
+        // Apply View Distance Cap to Fog
+        // If viewDistance is low, we need thicker fog to hide the clipping
+        // Density approx 3.0 / Distance for 95% opacity, 4.0 / Dist for >98%
+        const minFogForClipping = 3.5 / viewDistance;
+        const finalFog = Math.max(targetFog, minFogForClipping);
+
+        scene.fog = new THREE.FogExp2(targetSky, finalFog);
         scene.background = targetSky;
 
         if (ambLight.current) {

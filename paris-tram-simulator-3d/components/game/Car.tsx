@@ -1,11 +1,54 @@
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { TRACKS, MAP_NODES } from '../../constants';
+import { TRACKS, MAP_NODES, STOPS } from '../../constants';
 import { useGameStore, tramRealtimeData } from '../../store/useGameStore';
 
 export type CarType = 0 | 1 | 2 | 3 | 4;
 export const CAR_COLORS = ["#ffffff", "#111111", "#ff0000", "#00ff00", "#0000ff", "#888888"];
+
+// Pre-calculate which stops are near which tracks
+const STOPS_ON_TRACKS = TRACKS.map(track => {
+    const start = MAP_NODES[track.from];
+    const end = MAP_NODES[track.to];
+    const dir = new THREE.Vector2(end.x - start.x, end.z - start.z);
+    const len = dir.length();
+    dir.normalize();
+
+    const stops = STOPS.filter(stop => {
+        const toStop = new THREE.Vector2(stop.position.x - start.x, stop.position.z - start.z);
+        const projection = toStop.dot(dir);
+        if (projection < -5 || projection > len + 5) return false;
+
+        const projV = dir.clone().multiplyScalar(projection);
+        const perp = toStop.clone().sub(projV);
+        return perp.length() < 12; // Within 12 units of the track center
+    }).map(stop => {
+        const toStop = new THREE.Vector2(stop.position.x - start.x, stop.position.z - start.z);
+        const projection = toStop.dot(dir);
+
+        // Calculate which side the platform is on
+        // Platform is at +3.5 in local stop coordinates
+        const stopAngle = stop.rotation || 0;
+        const platformLocal = new THREE.Vector3(0, 0, 3.5);
+        platformLocal.applyAxisAngle(new THREE.Vector3(0, 1, 0), stopAngle);
+        const platformGlobal = stop.position.clone().add(platformLocal);
+
+        // Project platform side onto track normal
+        const normal = new THREE.Vector2(-dir.y, dir.x);
+        const toPlatform = new THREE.Vector2(platformGlobal.x - start.x, platformGlobal.z - start.z);
+        const sideOffset = toPlatform.dot(normal);
+
+        return {
+            id: stop.id,
+            progress: projection,
+            sideOffset: sideOffset // Distance from track center to platform center
+        };
+    });
+
+    return { trackId: track.id, stops };
+});
+
 
 interface CarProps {
     id: number;
@@ -146,6 +189,41 @@ const Car: React.FC<CarProps & { getOtherCars: () => { id: number, position: THR
             }
         }
 
+        // Check Stations
+        const trackStops = STOPS_ON_TRACKS.find(ts => ts.trackId === s.trackId)?.stops || [];
+        let forceLeft = false;
+        let forceRight = false;
+
+        for (let stop of trackStops) {
+            const dist = stop.progress - s.progress;
+            // Platform is 10 units long. Stay in bypass lane until well past.
+            if (dist > -15 && dist < 25) {
+                if (stop.sideOffset > 1.5) {
+                    forceLeft = true;
+                    // If we are still in the right lane area and very close to the platform, slow down
+                    if (s.offset > 0 && dist > 0 && dist < 12) {
+                        obstaclesAhead = true;
+                        targetSpeed = Math.min(targetSpeed, 10); // Slow down to 10km/h
+                    }
+                }
+                if (stop.sideOffset < -1.5) {
+                    forceRight = true;
+                    // If we are in the left lane (overtaking) and very close to the platform, slow down
+                    if (s.offset < 0 && dist > 0 && dist < 12) {
+                        obstaclesAhead = true;
+                        targetSpeed = Math.min(targetSpeed, 10); // Slow down to 10km/h
+                    }
+                }
+            }
+        }
+
+        if (forceLeft) {
+            shouldOvertake = true;
+        }
+        if (forceRight) {
+            shouldOvertake = false; // Priority to avoid left-side station
+        }
+
         // Check Other Cars
         const others = getOtherCars();
         for (let car of others) {
@@ -156,6 +234,22 @@ const Car: React.FC<CarProps & { getOtherCars: () => { id: number, position: THR
                     obstaclesAhead = true;
                     targetSpeed = Math.min(targetSpeed, car.speed);
                     if (dist < 5) targetSpeed = 0;
+                }
+            }
+        }
+
+        // Check Traffic Lights
+        const trackInfo = TRACKS.find(t => t.id === s.trackId);
+        if (trackInfo) {
+            const signalMode = useGameStore.getState().getSignalMode(s.trackId);
+            const distToEnd = trackInfo.length - s.progress;
+            if (distToEnd < 15 && distToEnd > 0) {
+                if (signalMode === 'STOP') {
+                    obstaclesAhead = true;
+                    targetSpeed = 0;
+                } else if (signalMode === 'SLOW') {
+                    obstaclesAhead = true;
+                    targetSpeed = Math.min(targetSpeed, 15);
                 }
             }
         }
@@ -192,14 +286,22 @@ const Car: React.FC<CarProps & { getOtherCars: () => { id: number, position: THR
 
         if (s.progress > track.length) {
             s.progress -= track.length;
-            const nextTracks = TRACKS.filter(t => t.from === track!.to);
+            const nextTracks = TRACKS.filter(t => t.from === track!.to && t.to !== track!.from);
             if (nextTracks.length > 0) {
                 const next = nextTracks[Math.floor(Math.random() * nextTracks.length)];
                 s.trackId = next.id;
-                track = next; // Update current track reference for immediate use
+                track = next;
             } else {
-                s.progress = track.length;
-                s.tempSpeed = 0;
+                // If only reversal is possible, allow it as last resort
+                const fallback = TRACKS.filter(t => t.from === track!.to);
+                if (fallback.length > 0) {
+                    const next = fallback[Math.floor(Math.random() * fallback.length)];
+                    s.trackId = next.id;
+                    track = next;
+                } else {
+                    s.progress = track.length;
+                    s.tempSpeed = 0;
+                }
             }
         }
 

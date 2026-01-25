@@ -2,64 +2,7 @@ import React from 'react';
 import * as THREE from 'three';
 import { MATERIALS } from '../../constants';
 import { useFrame } from '@react-three/fiber';
-import { useGameStore } from '../../store/useGameStore';
 
-const SoapBubbles: React.FC = () => {
-    const bubblesRef = React.useRef<THREE.Points>(null);
-    const { soapEffectEndTime } = useGameStore();
-    const active = Date.now() < soapEffectEndTime;
-
-    const particleCount = 200;
-    const particles = React.useMemo(() => {
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = new Float32Array(particleCount * 3);
-        for (let i = 0; i < particleCount; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * 10;
-            positions[i * 3 + 1] = Math.random() * 4;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 4;
-            velocities[i * 3] = (Math.random() - 0.5) * 0.1;
-            velocities[i * 3 + 1] = Math.random() * 0.1;
-            velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.1;
-        }
-        return { positions, velocities };
-    }, []);
-
-    useFrame((state, delta) => {
-        if (!active || !bubblesRef.current) return;
-
-        const posAttr = bubblesRef.current.geometry.attributes.position;
-        const array = posAttr.array as Float32Array;
-
-        for (let i = 0; i < particleCount; i++) {
-            array[i * 3] += particles.velocities[i * 3];
-            array[i * 3 + 1] += particles.velocities[i * 3 + 1];
-            array[i * 3 + 2] += particles.velocities[i * 3 + 2];
-
-            if (array[i * 3 + 1] > 5) {
-                array[i * 3 + 1] = 0;
-                array[i * 3] = (Math.random() - 0.5) * 10;
-                array[i * 3 + 2] = (Math.random() - 0.5) * 4;
-            }
-        }
-        posAttr.needsUpdate = true;
-    });
-
-    if (!active) return null;
-
-    return (
-        <points ref={bubblesRef}>
-            <bufferGeometry>
-                <bufferAttribute
-                    attach="attributes-position"
-                    count={particleCount}
-                    array={particles.positions}
-                    itemSize={3}
-                />
-            </bufferGeometry>
-            <pointsMaterial color="#ffffff" size={0.1} transparent opacity={0.6} />
-        </points>
-    );
-};
 
 interface TramMeshProps {
     lightsOn?: boolean;
@@ -278,7 +221,6 @@ const TramMesh = React.forwardRef<THREE.Group, TramMeshProps>(({
                 <meshStandardMaterial color="#444" />
             </mesh>
 
-            <SoapBubbles />
 
             {children}
         </group>

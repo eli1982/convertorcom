@@ -1,14 +1,33 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useGameStore, tramRealtimeData } from '../../store/useGameStore';
+import { useShallow } from 'zustand/react/shallow';
 import { MAP_NODES, TRACKS, STOPS, ROUTE_IDS, LANDMARKS } from '../../constants';
 
 // Dynamic Minimap Component
 const Minimap: React.FC = () => {
     const tramRef = useRef<SVGCircleElement>(null);
     const lineRef = useRef<SVGLineElement>(null);
-    const { activeRouteIndex, debugMode } = useGameStore();
+    const { activeRouteIndex, debugMode, minimapLabelMode, toggleMinimapLabelMode, requestTeleport } = useGameStore(useShallow(state => ({
+        activeRouteIndex: state.activeRouteIndex,
+        debugMode: state.debugMode,
+        minimapLabelMode: state.minimapLabelMode,
+        toggleMinimapLabelMode: state.toggleMinimapLabelMode,
+        requestTeleport: state.requestTeleport
+    })));
     const [hoveredStop, setHoveredStop] = useState<{ x: number, y: number, name: string } | null>(null);
+    const [hoveredRoadId, setHoveredRoadId] = useState<number | null>(null);
+    const [hoveredLandmark, setHoveredLandmark] = useState<{ x: number, z: number, name: string } | null>(null);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key.toLowerCase() === 't' && !e.repeat && hoveredRoadId !== null) {
+                requestTeleport(hoveredRoadId);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [hoveredRoadId, requestTeleport]);
 
     useEffect(() => {
         let rAF: number;
@@ -59,7 +78,7 @@ const Minimap: React.FC = () => {
                     const mx = (s.x + e.x) / 2;
                     const mz = (s.z + e.z) / 2;
 
-                    // Calculate offset to move text away from the line center (and potentially stations)
+                    // Calculate offset to move text away from the line center
                     const dx = e.x - s.x;
                     const dz = e.z - s.z;
                     const len = Math.hypot(dx, dz) || 1;
@@ -71,24 +90,54 @@ const Minimap: React.FC = () => {
 
                     return (
                         <React.Fragment key={t.id}>
-                            <line x1={s.x} y1={s.z} x2={e.x} y2={e.z} stroke="#555" strokeWidth="15" strokeLinecap="round" />
-                            {debugMode && (
-                                <text
-                                    x={mx + ox}
-                                    y={mz + oz}
-                                    fill="#ff00ff"
-                                    fontSize="28"
-                                    fontWeight="bold"
-                                    textAnchor="middle"
-                                    dominantBaseline="middle"
-                                    transform={`rotate(180, ${mx + ox}, ${mz + oz})`}
-                                    style={{ pointerEvents: 'none', textShadow: '0 0 4px #000, 0 0 2px #000' }}
-                                >
-                                    {t.id}
-                                    <tspan fill="white" fontSize="24" dx="5">
-                                        {(Math.abs(dx) > Math.abs(dz)) ? (dx > 0 ? "→" : "←") : (dz > 0 ? "↓" : "↑")}
-                                    </tspan>
-                                </text>
+                            {/* Hit Area Line (Wider, Invisible) */}
+                            <line
+                                x1={s.x} y1={s.z} x2={e.x} y2={e.z}
+                                stroke="transparent"
+                                strokeWidth="60"
+                                strokeLinecap="round"
+                                className="cursor-pointer"
+                                style={{ pointerEvents: 'auto' }}
+                                onMouseEnter={() => setHoveredRoadId(t.id)}
+                                onMouseLeave={() => setHoveredRoadId(null)}
+                            />
+                            {/* Visual Line */}
+                            <line
+                                x1={s.x} y1={s.z} x2={e.x} y2={e.z}
+                                stroke={hoveredRoadId === t.id ? "#facc15" : "#555"}
+                                strokeWidth="20"
+                                strokeLinecap="round"
+                                style={{ pointerEvents: 'none' }}
+                            />
+                            {(minimapLabelMode === 'roads' || debugMode) && (
+                                <g transform={`rotate(180, ${mx + ox}, ${mz + oz})`}>
+                                    <text
+                                        x={mx + ox}
+                                        y={mz + oz}
+                                        fill={hoveredRoadId === t.id ? "#facc15" : (minimapLabelMode === 'roads' ? "#cbd5e1" : "#ff00ff")}
+                                        fontSize={minimapLabelMode === 'roads' ? "24" : "28"}
+                                        fontWeight="bold"
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                        style={{ pointerEvents: 'auto', textShadow: '0 0 4px #000, 0 0 2px #000', cursor: 'pointer' }}
+                                        onMouseEnter={() => setHoveredRoadId(t.id)}
+                                        onMouseLeave={() => setHoveredRoadId(null)}
+                                    >
+                                        R{t.id}
+                                    </text>
+                                    <text
+                                        x={mx + ox}
+                                        y={mz + oz + 20}
+                                        fill="white"
+                                        fontSize="32"
+                                        fontWeight="bold"
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                        style={{ pointerEvents: 'none', textShadow: '0 0 4px #000, 0 0 2px #000' }}
+                                    >
+                                        {(Math.abs(dx) > Math.abs(dz)) ? (dx > 0 ? "←" : "→") : (dz > 0 ? "↑" : "↓")}
+                                    </text>
+                                </g>
                             )}
                         </React.Fragment>
                     );
@@ -102,11 +151,12 @@ const Minimap: React.FC = () => {
                     strokeDasharray="10,10"
                     className="animate-dash-flow"
                     markerEnd="url(#arrow)"
+                    style={{ pointerEvents: 'none', transform: 'rotate(180deg)' }}
                     opacity="0.8"
                 />
 
                 {/* Stops */}
-                {STOPS.map(s => (
+                {minimapLabelMode === 'stations' && STOPS.map(s => (
                     <g
                         key={s.id}
                         className="cursor-pointer hover:opacity-80 transition-opacity"
@@ -139,38 +189,84 @@ const Minimap: React.FC = () => {
 
                 {/* Landmarks */}
                 {LANDMARKS.map((l, i) => (
-                    <text
+                    <g
                         key={`landmark-${i}`}
-                        x={l.x}
-                        y={l.z}
-                        fontSize="30"
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        transform={`rotate(180, ${l.x}, ${l.z})`}
-                        style={{ pointerEvents: 'none' }}
+                        className="cursor-pointer"
+                        onMouseEnter={() => setHoveredLandmark({ x: l.x, z: l.z, name: l.type })}
+                        onMouseLeave={() => setHoveredLandmark(null)}
                     >
-                        {l.label}
-                    </text>
+                        {minimapLabelMode === 'stations' ? (
+                            <text
+                                x={l.x}
+                                y={l.z}
+                                fontSize="30"
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                transform={`rotate(180, ${l.x}, ${l.z})`}
+                                style={{ pointerEvents: 'none' }}
+                            >
+                                {l.label}
+                            </text>
+                        ) : (
+                            <circle
+                                cx={l.x}
+                                cy={l.z}
+                                r="12"
+                                fill="#3b82f6"
+                                stroke="white"
+                                strokeWidth="2"
+                                style={{ pointerEvents: 'none' }}
+                            />
+                        )}
+                    </g>
                 ))}
 
                 {/* Tram Indicator */}
-                <circle ref={tramRef} cx="0" cy="0" r="20" fill="#3b82f6" stroke="white" strokeWidth="3" />
+                <circle ref={tramRef} cx="0" cy="0" r="20" fill="#3b82f6" stroke="white" strokeWidth="3" style={{ pointerEvents: 'none' }} />
             </svg>
 
+            {/* Mode Toggle */}
+            <button
+                onClick={toggleMinimapLabelMode}
+                className="absolute right-0 top-0 bg-slate-900/90 hover:bg-slate-800 border border-white/20 rounded-full px-3 py-2 text-[10px] text-white font-bold transition-all pointer-events-auto z-[60] shadow-xl flex items-center gap-2 group transform translate-x-1/4 -translate-y-1/4"
+            >
+                <div className={`w-2 h-2 rounded-full ${minimapLabelMode === 'stations' ? 'bg-green-500' : 'bg-blue-500'}`} />
+                <span className="opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap uppercase">{minimapLabelMode}</span>
+            </button>
+
             {/* Tooltip - Positioned absolutely relative to the map container */}
-            {hoveredStop && (
+            {(hoveredStop || hoveredLandmark || hoveredRoadId !== null) && (
                 <div
                     className="absolute bg-white text-black text-sm font-bold px-3 py-1.5 rounded shadow-xl pointer-events-none z-[100] whitespace-nowrap border border-gray-200"
                     style={{
-                        // Since the map is rotated 180deg, we need to invert coordinates to match visual position
-                        // Visual Top = Physical Bottom (+Z), Visual Left = Physical Right (+X)
-                        // Formula: ((-val + 350) / 700) * 100%
-                        top: `${((-hoveredStop.y + 350) / 700) * 100}%`,
-                        left: `${((-hoveredStop.x + 350) / 700) * 100}%`,
+                        top: hoveredStop
+                            ? `${((-hoveredStop.y + 350) / 700) * 100}%`
+                            : hoveredLandmark
+                                ? `${((-hoveredLandmark.z + 350) / 700) * 100}%`
+                                : (() => {
+                                    const road = TRACKS.find(r => r.id === hoveredRoadId);
+                                    if (!road) return '0%';
+                                    const midZ = (MAP_NODES[road.from].z + MAP_NODES[road.to].z) / 2;
+                                    return `${((-midZ + 350) / 700) * 100}%`;
+                                })(),
+                        left: hoveredStop
+                            ? `${((-hoveredStop.x + 350) / 700) * 100}%`
+                            : hoveredLandmark
+                                ? `${((-hoveredLandmark.x + 350) / 700) * 100}%`
+                                : (() => {
+                                    const road = TRACKS.find(r => r.id === hoveredRoadId);
+                                    if (!road) return '0%';
+                                    const midX = (MAP_NODES[road.from].x + MAP_NODES[road.to].x) / 2;
+                                    return `${((-midX + 350) / 700) * 100}%`;
+                                })(),
                         transform: 'translate(-50%, -150%)'
                     }}
                 >
-                    {hoveredStop.name}
+                    {hoveredStop
+                        ? hoveredStop.name
+                        : hoveredLandmark
+                            ? hoveredLandmark.name
+                            : `${TRACKS.find(t => t.id === hoveredRoadId)?.name || `Road ${hoveredRoadId}`} (PRESS T)`}
                 </div>
             )}
 
@@ -194,8 +290,38 @@ const Overlay: React.FC = () => {
         doorsOpen, rampExtended, pantographUp,
         indicatorLeft, indicatorRight, currentPower,
         message, conductorMessage, conductorMessageExpiry, scoreFloatingTexts, removeFloatingText,
-        showMinimap, musicEnabled, toggleMusic, setTimeOfDay
-    } = useGameStore();
+        showMinimap, musicEnabled, toggleMusic, setTimeOfDay, setWeather,
+        viewDistance, setViewDistance
+    } = useGameStore(useShallow(state => ({
+        score: state.score,
+        speed: state.speed,
+        passengers: state.passengers,
+        nextStop: state.nextStop,
+        weather: state.weather,
+        timeOfDay: state.timeOfDay,
+        doorsOpen: state.doorsOpen,
+        rampExtended: state.rampExtended,
+        pantographUp: state.pantographUp,
+        lightsOn: state.lightsOn,
+        wipersOn: state.wipersOn,
+        windowsOpen: state.windowsOpen,
+        eBrakeActive: state.eBrakeActive,
+        indicatorLeft: state.indicatorLeft,
+        indicatorRight: state.indicatorRight,
+        currentPower: state.currentPower,
+        message: state.message,
+        conductorMessage: state.conductorMessage,
+        conductorMessageExpiry: state.conductorMessageExpiry,
+        scoreFloatingTexts: state.scoreFloatingTexts,
+        removeFloatingText: state.removeFloatingText,
+        showMinimap: state.showMinimap,
+        musicEnabled: state.musicEnabled,
+        toggleMusic: state.toggleMusic,
+        setTimeOfDay: state.setTimeOfDay,
+        setWeather: state.setWeather,
+        viewDistance: state.viewDistance,
+        setViewDistance: state.setViewDistance
+    })));
 
     // Cleanup floating texts
     useEffect(() => {
@@ -302,8 +428,32 @@ const Overlay: React.FC = () => {
                         </button>
                     </div>
 
-                    <div className="bg-black/60 backdrop-blur-md px-6 py-3 rounded-xl text-white border border-white/10 font-bold text-sm tracking-wider">
+                    <div
+                        onClick={() => {
+                            const types = ['Clear', 'Rain', 'Snow'] as const;
+                            const next = types[(types.indexOf(weather) + 1) % types.length];
+                            setWeather(next);
+                        }}
+                        className="pointer-events-auto bg-black/60 backdrop-blur-md px-6 py-3 rounded-xl text-white border border-white/10 font-bold text-sm tracking-wider cursor-pointer hover:bg-black/70 active:scale-95 transition-all select-none"
+                        title="Click to cycle weather"
+                    >
                         WEATHER: <span className={weather === 'Clear' ? 'text-yellow-400' : 'text-blue-300'}>{weather.toUpperCase()}</span>
+                    </div>
+
+                    <div className="mt-2 pointer-events-auto bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 flex flex-col gap-1 w-[200px]">
+                        <div className="flex justify-between text-xs text-white font-bold uppercase">
+                            <span>View Dist</span>
+                            <span>{viewDistance}m</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="200"
+                            max="2000"
+                            step="50"
+                            value={viewDistance}
+                            onChange={(e) => setViewDistance(Number(e.target.value))}
+                            className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
                     </div>
                 </div>
             </div>
@@ -332,18 +482,25 @@ const Overlay: React.FC = () => {
                         <ControlKey keys="X" desc="Windows" />
                         <ControlKey keys="N" desc="E-Brake" />
                         <ControlKey keys="M" desc="Minimap" />
+                        <ControlKey keys="T" desc="Teleport (on Map)" />
                         <ControlKey keys="Shift+D" desc="Debug" />
                     </div>
                 </div>
 
                 <div className="flex flex-col items-center gap-2 absolute left-1/2 -translate-x-1/2 bottom-5">
                     {/* Dashboard Panel */}
-                    <div className="bg-slate-800/90 p-4 rounded-2xl border-2 border-slate-600 flex items-center gap-4 shadow-2xl">
-                        <div className={`w-5 h-5 rounded-full border border-slate-500 ${indicatorLeft ? 'bg-amber-500 shadow-[0_0_10px_#f59e0b] animate-pulse' : 'bg-slate-700'}`} />
+                    <div className="bg-slate-800/90 p-4 rounded-2xl border-2 border-slate-600 flex items-center gap-4 shadow-2xl min-h-[80px]">
+                        <div className="relative flex flex-col items-center">
+                            <div className={`w-5 h-5 rounded-full border border-slate-500 ${indicatorLeft ? 'bg-amber-500 shadow-[0_0_10px_#f59e0b] animate-pulse' : 'bg-slate-700'}`} />
+                            {indicatorLeft && <IndicatorLabel side="left" />}
+                        </div>
 
                         <div className="text-white font-bold tracking-widest">TRAM 802</div>
 
-                        <div className={`w-5 h-5 rounded-full border border-slate-500 ${indicatorRight ? 'bg-amber-500 shadow-[0_0_10px_#f59e0b] animate-pulse' : 'bg-slate-700'}`} />
+                        <div className="relative flex flex-col items-center">
+                            <div className={`w-5 h-5 rounded-full border border-slate-500 ${indicatorRight ? 'bg-amber-500 shadow-[0_0_10px_#f59e0b] animate-pulse' : 'bg-slate-700'}`} />
+                            {indicatorRight && <IndicatorLabel side="right" />}
+                        </div>
 
                         <div className="flex flex-col gap-1 ml-4 border-l border-slate-600 pl-4">
                             {/* Status Lights: Grey when inactive */}
@@ -393,6 +550,57 @@ const Overlay: React.FC = () => {
                     animation: float-up 1s ease-out forwards;
                 }
             `}</style>
+        </div>
+    );
+};
+
+const IndicatorLabel: React.FC<{ side: 'left' | 'right' }> = ({ side }) => {
+    const trackId = tramRealtimeData.currentTrackId;
+    const currentTrack = TRACKS.find(t => t.id === trackId);
+    if (!currentTrack) return null;
+
+    const s_curr = MAP_NODES[currentTrack.from];
+    const e_curr = MAP_NODES[currentTrack.to];
+    const curAngle = Math.atan2(e_curr.z - s_curr.z, e_curr.x - s_curr.x);
+
+    const nextOptions = TRACKS.filter(t => t.from === currentTrack.to && t.to !== currentTrack.from); // Filter out reversal
+    if (nextOptions.length === 0) return null;
+
+    const choices = nextOptions.map(opt => {
+        const os = MAP_NODES[opt.from];
+        const oe = MAP_NODES[opt.to];
+        const nextAngle = Math.atan2(oe.z - os.z, oe.x - os.x);
+        let diff = nextAngle - curAngle;
+        while (diff <= -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        return { track: opt, diff };
+    });
+
+    // In our coordinate system (X right, Z down):
+    // Positive diff = turn Right (Clockwise)
+    // Negative diff = turn Left (Counter-Clockwise)
+    let chosen;
+    if (side === 'left') {
+        // Pick most negative (left-most turn)
+        choices.sort((a, b) => a.diff - b.diff);
+        chosen = choices[0].track;
+    } else {
+        // Pick most positive (right-most turn)
+        choices.sort((a, b) => b.diff - a.diff);
+        chosen = choices[0].track;
+    }
+
+    const s = MAP_NODES[chosen.from];
+    const e = MAP_NODES[chosen.to];
+    const dx = e.x - s.x;
+    const dz = e.z - s.z;
+    // Matching 180deg rotated minimap logic: East(+X) -> ←, South(+Z) -> ↑
+    const symbol = (Math.abs(dx) > Math.abs(dz)) ? (dx > 0 ? "←" : "→") : (dz > 0 ? "↑" : "↓");
+
+    return (
+        <div className="absolute top-full mt-1 flex flex-col items-center leading-none text-amber-400 font-bold drop-shadow-md">
+            <span className="text-[10px]">R{chosen.id}</span>
+            <span className="text-xs">{symbol}</span>
         </div>
     );
 };

@@ -10,6 +10,7 @@ export interface Track {
     from: number;
     to: number;
     length: number;
+    name?: string;
 }
 
 export interface Stop {
@@ -33,22 +34,22 @@ export interface GameState {
     speed: number;
     passengers: number;
     nextStop: string;
-    
+
     doorsOpen: boolean;
     rampExtended: boolean;
     pantographUp: boolean;
     lightsOn: boolean;
     wipersOn: boolean;
     windowsOpen: boolean;
-    
+
     indicatorLeft: boolean;
     indicatorRight: boolean;
-    
+
     weather: 'Clear' | 'Rain' | 'Snow';
     traction: number;
-    
-    throttle: number; 
-    
+
+    throttle: number;
+
     platformSide: 'left' | 'right' | null; // Detected side of the nearest platform
     conductorMessage: string;
     showMinimap: boolean;

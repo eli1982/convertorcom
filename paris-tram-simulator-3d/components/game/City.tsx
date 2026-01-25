@@ -8,8 +8,11 @@ import { Stop } from '../../types';
 import { useGameStore, tramRealtimeData } from '../../store/useGameStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TEXTURE_URLS } from '../../textures/generatedTextures';
-import TrafficManager from './TrafficManager';
-import { TramGarage, TramWash } from './Structures';
+import TrafficInstanced from './TrafficInstanced';
+import StreetLightsInstanced from './StreetLightsInstanced';
+import CatenaryOptimized from './CatenaryOptimized';
+import { TramGarage, TramWash, EiffelTower } from './Structures';
+import TrafficLightSystem from './TrafficLightSystem';
 
 
 // Reusable geometries
@@ -18,247 +21,12 @@ const cylinderGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
 const planeGeo = new THREE.PlaneGeometry(1, 1);
 
 // Helper for View Distance
-const getViewDistance = (weather: string, time: number) => {
-    // These values coordinate with Weather.tsx fog density to ensure fade-out before cull
-    if (weather === 'Snow') return 160;
-    if (weather === 'Rain') return 200;
-    if (time < 6 || time > 19) return 250;
-    return 500;
+const getViewDistance = (weather: string, time: number, setting: number) => {
+    // Respect user setting primarily
+    return setting;
 };
 
-const StreetLight = React.memo(({ position, rotation, targetIntensity, spotTexture }: { position: THREE.Vector3, rotation: number, targetIntensity: number, spotTexture: THREE.Texture }) => {
-    const intensityRef = useRef(0);
-    const groupRef = useRef<THREE.Group>(null);
-    const beamRef = useRef<THREE.Mesh>(null);
-    const spotRef = useRef<THREE.Mesh>(null);
-    const bulbRef = useRef<THREE.MeshBasicMaterial>(null);
-    const lastDistCheck = useRef(Math.random()); // Random offset to distribute checks
 
-    useFrame(({ camera }, delta) => {
-        if (!groupRef.current) return;
-
-        // Throttle Distance Culling (Check every ~0.5s)
-        lastDistCheck.current += delta;
-        if (lastDistCheck.current > 0.5) {
-            lastDistCheck.current = 0;
-            const { weather, timeOfDay } = useGameStore.getState();
-            const maxDist = getViewDistance(weather, timeOfDay);
-            const dist = camera.position.distanceTo(position);
-            groupRef.current.visible = dist <= maxDist;
-        }
-
-        if (!groupRef.current.visible) return;
-
-        // Smoothly interpolate intensity towards target
-        intensityRef.current = THREE.MathUtils.lerp(intensityRef.current, targetIntensity, delta * 1.0);
-
-        const i = intensityRef.current;
-
-        // Optimize: If completely off, hide light meshes only (keep pole visible)
-        if (i < 0.01) {
-            if (beamRef.current) beamRef.current.visible = false;
-            if (spotRef.current) spotRef.current.visible = false;
-            if (bulbRef.current) bulbRef.current.color.setHex(0x333333);
-            return;
-        }
-
-        if (beamRef.current) {
-            beamRef.current.visible = true;
-            (beamRef.current.material as THREE.MeshBasicMaterial).opacity = 0.05 * i;
-        }
-        if (spotRef.current) {
-            spotRef.current.visible = true;
-            (spotRef.current.material as THREE.MeshBasicMaterial).opacity = 0.6 * i;
-        }
-        if (bulbRef.current) {
-            // Lerp color from dark grey to bright orange
-            bulbRef.current.color.lerpColors(new THREE.Color(0x333333), new THREE.Color(0xffaa55), i);
-        }
-    });
-
-    return (
-        <group ref={groupRef} position={position} rotation-y={rotation}>
-            {/* Pole */}
-            <mesh position={[0, 3, 0]} geometry={cylinderGeo} scale={[0.15, 6, 0.15]}>
-                <meshStandardMaterial color="#1a1a1a" roughness={0.5} />
-            </mesh>
-            {/* Base */}
-            <mesh position={[0, 0.25, 0]} geometry={cylinderGeo} scale={[0.3, 0.5, 0.3]}>
-                <meshStandardMaterial color="#1a1a1a" />
-            </mesh>
-            {/* Arm */}
-            <mesh position={[0.7, 5.8, 0]} geometry={boxGeo} scale={[1.6, 0.15, 0.15]}>
-                <meshStandardMaterial color="#1a1a1a" />
-            </mesh>
-            {/* Fixture Top */}
-            <mesh position={[1.4, 5.85, 0]} geometry={boxGeo} scale={[0.5, 0.1, 0.3]}>
-                <meshStandardMaterial color="#1a1a1a" />
-            </mesh>
-
-            {/* Emissive Bulb Area */}
-            <mesh position={[1.4, 5.75, 0]}>
-                <boxGeometry args={[0.4, 0.05, 0.25]} />
-                <meshBasicMaterial ref={bulbRef} color="#333" toneMapped={false} />
-            </mesh>
-
-            {/* FAKE LIGHTING EFFECTS */}
-            <group>
-                {/* Volumetric Beam Approximation - Wide Soft Cone Only */}
-                <mesh ref={beamRef} position={[1.4, 2.6, 0]} visible={false}>
-                    <cylinderGeometry args={[0.15, 3.5, 6, 32, 1, true]} />
-                    <meshBasicMaterial
-                        color="#ffaa55"
-                        transparent
-                        opacity={0}
-                        depthWrite={false}
-                        side={THREE.DoubleSide}
-                        blending={THREE.AdditiveBlending}
-                    />
-                </mesh>
-
-                {/* Ground Light Spot (Fake light pool on the road) */}
-                <mesh ref={spotRef} position={[1.4, 0.1, 0]} rotation-x={-Math.PI / 2} visible={false}>
-                    <planeGeometry args={[10, 10]} />
-                    <meshBasicMaterial
-                        map={spotTexture}
-                        color="#ffaa55"
-                        transparent
-                        opacity={0}
-                        depthWrite={false}
-                        blending={THREE.AdditiveBlending}
-                    />
-                </mesh>
-            </group>
-        </group>
-    )
-});
-
-const StreetLightsSystem: React.FC = () => {
-    const spotTexture = useTexture(TEXTURE_URLS.spot);
-
-    // Determine target intensity directly from store to prevent re-renders on speed/etc
-    const targetIntensity = useGameStore(state => {
-        const isNight = state.timeOfDay >= 19.0 || state.timeOfDay <= 6.0;
-        const isDarkStorm = state.weather !== 'Clear' && (state.timeOfDay > 16 || state.timeOfDay < 8);
-        return (isNight || isDarkStorm) ? 1.0 : 0.0;
-    });
-
-    const lights = useMemo(() => {
-        const items: { id: string, position: THREE.Vector3, rotation: number }[] = [];
-        const LIGHTS_PER_TRACK = 10;
-
-        TRACKS.forEach((track) => {
-            const startNode = MAP_NODES[track.from];
-            const endNode = MAP_NODES[track.to];
-            const dx = endNode.x - startNode.x;
-            const dz = endNode.z - startNode.z;
-            const dirX = dx / Math.hypot(dx, dz);
-            const dirZ = dz / Math.hypot(dx, dz);
-            const perpX = -dirZ;
-            const perpZ = dirX;
-            const OFFSET_FROM_CENTER = 6.5;
-
-            [-1, 1].forEach((side) => {
-                for (let i = 0; i < LIGHTS_PER_TRACK; i++) {
-                    const t = (i + 0.5) / LIGHTS_PER_TRACK;
-                    const posX = startNode.x + dx * t;
-                    const posZ = startNode.z + dz * t;
-
-                    const finalX = posX + perpX * OFFSET_FROM_CENTER * side;
-                    const finalZ = posZ + perpZ * OFFSET_FROM_CENTER * side;
-
-                    const rot = Math.atan2(-perpZ * side, -perpX * side);
-
-                    items.push({
-                        id: `light_${track.id}_${side}_${i}`,
-                        position: new THREE.Vector3(finalX, 0, finalZ),
-                        rotation: -rot
-                    });
-                }
-            });
-        });
-        return items;
-    }, []);
-
-    return (
-        <group>
-            {lights.map(l => (
-                <StreetLight
-                    key={l.id}
-                    position={l.position}
-                    rotation={l.rotation}
-                    targetIntensity={targetIntensity}
-                    spotTexture={spotTexture}
-                />
-            ))}
-        </group>
-    );
-};
-
-const Arm: React.FC<{ start: THREE.Vector3, end: THREE.Vector3 }> = ({ start, end }) => {
-    const len = start.distanceTo(end);
-    const mid = start.clone().lerp(end, 0.5);
-    const angle = Math.atan2(end.z - start.z, end.x - start.x);
-    return (
-        <mesh position={mid} rotation-y={-angle}>
-            <boxGeometry args={[len, 0.15, 0.15]} />
-            <meshStandardMaterial color="#2a2a2a" />
-        </mesh>
-    );
-};
-
-const CatenarySystem: React.FC = () => {
-    // Renders overhead wires and supporting poles
-    const wireData = useMemo(() => {
-        return TRACKS.map(track => {
-            const s = MAP_NODES[track.from];
-            const e = MAP_NODES[track.to];
-            const len = Math.hypot(e.x - s.x, e.z - s.z);
-            const angle = Math.atan2(e.z - s.z, e.x - s.x);
-            const midX = (s.x + e.x) / 2;
-            const midZ = (s.z + e.z) / 2;
-
-            return {
-                id: `wire_${track.id}`,
-                pos: new THREE.Vector3(midX, 6.0, midZ), // Height increased to 6.0 to touch pantograph
-                rotation: -angle,
-                length: len
-            };
-        });
-    }, []);
-
-    const poles = useMemo(() => {
-        return MAP_NODES.map((node, i) => ({
-            id: `pole_${i}`,
-            // Offset poles by (10,10) to ensure they are on the grass (road width is 12, so 6+ from center)
-            position: new THREE.Vector3(node.x + 10, 3.5, node.z + 10),
-            nodePos: new THREE.Vector3(node.x, 6.0, node.z)
-        }));
-    }, []);
-
-    return (
-        <group>
-            {/* Wires */}
-            {wireData.map(w => (
-                <mesh key={w.id} position={w.pos} rotation-y={w.rotation}>
-                    <boxGeometry args={[w.length, 0.06, 0.06]} />
-                    <meshBasicMaterial color="#333" />
-                </mesh>
-            ))}
-
-            {/* Support Poles on Grass with Arms */}
-            {poles.map(p => (
-                <group key={p.id}>
-                    <mesh position={p.position}>
-                        <cylinderGeometry args={[0.2, 0.2, 7, 8]} />
-                        <meshStandardMaterial color="#2a2a2a" roughness={0.8} />
-                    </mesh>
-                    <Arm start={new THREE.Vector3(p.position.x, 6.0, p.position.z)} end={p.nodePos} />
-                </group>
-            ))}
-        </group>
-    )
-}
 
 const TrackHighlights: React.FC = () => {
     const currentTrackMesh = useRef<THREE.Mesh>(null);
@@ -280,7 +48,7 @@ const TrackHighlights: React.FC = () => {
 
         const trackId = tramRealtimeData.currentTrackId;
         const progress = tramRealtimeData.positionOnTrack;
-        const currentTrack = TRACKS[trackId];
+        const currentTrack = TRACKS.find(t => t.id === trackId);
         if (!currentTrack) return;
 
         const startNode = MAP_NODES[currentTrack.from];
@@ -298,7 +66,7 @@ const TrackHighlights: React.FC = () => {
         currentTrackMesh.current.rotation.y = -angle;
         currentTrackMesh.current.scale.set(remainingLength, 0.25, 2.5);
 
-        const nextOptions = TRACKS.filter(t => t.from === currentTrack.to);
+        const nextOptions = TRACKS.filter(t => t.from === currentTrack.to && t.to !== currentTrack.from);
         if (nextOptions.length > 0) {
             let chosen = nextOptions[0];
             if (nextOptions.length > 1) {
@@ -643,9 +411,11 @@ const StopMarker: React.FC<{ stop: Stop }> = ({ stop }) => {
         lastDistCheck.current += delta;
         if (lastDistCheck.current > 0.5) {
             lastDistCheck.current = 0;
-            const { weather, timeOfDay } = useGameStore.getState();
-            const maxDist = getViewDistance(weather, timeOfDay);
+            const { weather, timeOfDay, viewDistance } = useGameStore.getState();
+            const maxDist = getViewDistance(weather, timeOfDay, viewDistance);
             const dist = camera.position.distanceTo(stop.position);
+
+            // Just use distance check
             groupRef.current.visible = dist <= maxDist;
         }
     });
@@ -799,10 +569,11 @@ const Building: React.FC<{ position: [number, number, number], type: 'tower' | '
         lastDistCheck.current += delta;
         if (lastDistCheck.current > 0.5) {
             lastDistCheck.current = 0;
-            const { weather, timeOfDay } = useGameStore.getState();
-            const maxDist = getViewDistance(weather, timeOfDay);
+            const { weather, timeOfDay, viewDistance } = useGameStore.getState();
+            const maxDist = getViewDistance(weather, timeOfDay, viewDistance);
             // Allow slightly further distance for large buildings so they don't pop as noticeably
             const dist = camera.position.distanceTo(posVector);
+
             groupRef.current.visible = dist <= (maxDist * 1.2);
         }
     });
@@ -810,9 +581,7 @@ const Building: React.FC<{ position: [number, number, number], type: 'tower' | '
     if (type === 'tower') {
         return (
             <group ref={groupRef}>
-                <mesh position={[position[0], 40, position[2]]} castShadow receiveShadow material={mat}>
-                    <coneGeometry args={[15, 80, 4]} />
-                </mesh>
+                <EiffelTower position={[position[0], 0, position[2]]} scale={0.5} />
             </group>
         );
     }
@@ -855,8 +624,8 @@ const City: React.FC = () => {
 
     const buildings = useMemo(() => {
         const b: { x: number, z: number, type: 'tower' | 'arc' | 'generic' }[] = [
-            { x: 50, z: 50, type: 'tower' },
-            { x: -50, z: 50, type: 'arc' }
+            { x: -130, z: 0, type: 'tower' },   // Near Eiffel Tower stop (-100, 0, 0)
+            { x: -130, z: -200, type: 'arc' }  // Near Arc de Triomphe stop (-100, 0, -200)
         ];
 
         // Random generation disabled
@@ -866,6 +635,7 @@ const City: React.FC = () => {
 
     return (
         <group>
+
             <mesh rotation-x={-Math.PI / 2} receiveShadow>
                 <planeGeometry args={[2000, 2000]} />
                 <meshStandardMaterial map={grassTexture} />
@@ -903,10 +673,12 @@ const City: React.FC = () => {
             {/* Tram Wash - Side of the track at Track X=0, Z=-100 */}
             <TramWash position={[-35, 0, -100]} rotation={Math.PI / 2} />
 
-            <TrafficManager />
+            {/* Traffic and Atmosphere */}
+            <TrafficInstanced />
+            <TrafficLightSystem />
+            <StreetLightsInstanced />
             <TrackHighlights />
-            <StreetLightsSystem />
-            <CatenarySystem />
+            <CatenaryOptimized />
 
             {buildings.map((b, i) => (
                 <Building key={i} position={[b.x, 0, b.z]} type={b.type} texture={brickTexture} />
