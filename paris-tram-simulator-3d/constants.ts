@@ -3,7 +3,7 @@ import { Node, Track, Stop } from './types';
 import * as THREE from 'three';
 
 export const GAME_CONFIG = {
-  maxSpeed: 120,
+  maxSpeed: 60,
   acceleration: 1.0,
   deceleration: 0.5,
   brakePower: 3.0,

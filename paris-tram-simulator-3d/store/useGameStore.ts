@@ -1,16 +1,28 @@
-
 import { create } from 'zustand';
 import { STOPS, ROUTE_IDS, TRACKS, MAP_NODES } from '../constants';
 import { ScoreFloatingText } from '../types';
+import * as THREE from 'three'; // Added this import for THREE.Vector3
 
 // Mutable object for high-frequency updates (avoiding React state thrashing)
 // Expanded to include track info for the highlighter system
-export const tramRealtimeData = {
+export interface TramRealtimeData {
+    x: number;
+    z: number;
+    rotation: number;
+    currentTrackId: number;
+    positionOnTrack: number;
+    speed: number; // Added speed to the interface
+    driverPosition: THREE.Vector3 | null; // Added driverPosition to the interface
+}
+
+export const tramRealtimeData: TramRealtimeData = {
     x: 0,
     z: 0,
     rotation: 0,
     currentTrackId: 0,
-    positionOnTrack: 0
+    positionOnTrack: 0,
+    speed: 0, // Initialized speed
+    driverPosition: null // Initialized driverPosition
 };
 
 export type SignalMode = 'STOP' | 'SLOW' | 'GO_STRAIGHT' | 'GO_LEFT' | 'GO_RIGHT';
@@ -33,6 +45,7 @@ interface GameState {
     nextStop: string;
 
     doorsOpen: boolean;
+    driverDoorOpen: boolean;
     rampExtended: boolean;
     pantographUp: boolean;
     lightsOn: boolean;
@@ -46,6 +59,12 @@ interface GameState {
     weather: 'Clear' | 'Rain' | 'Snow';
     traction: number;
     soapEffectEndTime: number; // Timestamp when soap effect ends
+
+    // New Control States
+    sunblindDown: boolean;
+    engineOn: boolean;
+    driverVisible: boolean;
+    useGLBModel: boolean; // Toggle for GLB tram model
 
     // Time System
     timeOfDay: number; // 0.0 to 24.0
@@ -86,14 +105,26 @@ interface GameState {
     toggleWindows: () => void;
     toggleEBrake: () => void;
     toggleMinimap: () => void;
+    setDoorsOpen: (open: boolean) => void;
+    setDriverDoorOpen: (open: boolean) => void;
+    setRampExtended: (extended: boolean) => void;
+    setPantographUp: (up: boolean) => void;
     toggleMinimapLabelMode: () => void;
     toggleMusic: () => void;
     setViewDistance: (dist: number) => void;
+
+    toggleSunblind: () => void;
+    toggleEngine: () => void;
+    toggleDriver: () => void;
+    toggleGLBModel: () => void;
 
     setIndicator: (side: 'left' | 'right' | 'none') => void;
     setWeather: (weather: 'Clear' | 'Rain' | 'Snow') => void;
     setConductorMessage: (msg: string) => void;
     setTimeOfDay: (time: number) => void;
+
+    hoveredObject: string | null;
+    setHoveredObject: (name: string | null) => void;
 
     boardPassengers: (stopId: number) => number; // Returns number boarded
     advanceActiveStop: () => void;
@@ -130,7 +161,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     passengers: 0,
     nextStop: 'Roaming',
 
-    doorsOpen: false,
+    doorsOpen: true, // Initial State: Open (Driver outside)
+    driverDoorOpen: true, // Initial State: Driver Door Open
     rampExtended: false,
     pantographUp: true,
     lightsOn: false,
@@ -144,6 +176,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     weather: 'Clear',
     traction: 1.0,
     soapEffectEndTime: 0,
+
+    sunblindDown: false,
+    engineOn: false, // Default off as requested? Or on? Let's default off so user has to start it? 
+    // Wait, user said "Use key to switch engine on or off". 
+    // If I default to false, they might think it's broken.
+    // But explicit start is cool. Let's default false.
+    driverVisible: false, // Initial State: Driver Outside
+    useGLBModel: false, // Default to procedural model
     currentPower: 0,
     message: null,
     conductorMessage: CONDUCTOR_MESSAGES.welcome,
@@ -219,6 +259,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     toggleWindows: () => set((state) => ({ windowsOpen: !state.windowsOpen })),
     toggleEBrake: () => set((state) => ({ eBrakeActive: !state.eBrakeActive })),
     toggleMinimap: () => set((state) => ({ showMinimap: !state.showMinimap })),
+    setDoorsOpen: (open) => set({ doorsOpen: open }),
+    setDriverDoorOpen: (open) => set({ driverDoorOpen: open }),
+    setRampExtended: (extended) => set({ rampExtended: extended }),
+    setPantographUp: (up) => set({ pantographUp: up }),
     toggleMinimapLabelMode: () => set((state) => ({
         minimapLabelMode: state.minimapLabelMode === 'stations' ? 'roads' : 'stations'
     })),
@@ -256,6 +300,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
     setTimeOfDay: (time) => set({ timeOfDay: time }),
+
+    hoveredObject: null,
+    setHoveredObject: (name) => set({ hoveredObject: name }),
 
     boardPassengers: (stopId) => {
         const state = get();
@@ -313,6 +360,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     teleportTrackId: null,
     requestTeleport: (trackId) => set({ teleportTrackId: trackId }),
     clearTeleportRequest: () => set({ teleportTrackId: null }),
+
+    // New Controls
+    toggleSunblind: () => set((state) => ({ sunblindDown: !state.sunblindDown })),
+    toggleEngine: () => set((state) => ({ engineOn: !state.engineOn })),
+    toggleDriver: () => set((state) => {
+        const newVisible = !state.driverVisible;
+        return {
+            driverVisible: newVisible,
+            doorsOpen: false, // Ensure passenger doors are closed
+            driverDoorOpen: !newVisible // Open driver door if driver is Out (visible=false), Close if In
+        };
+    }),
+    toggleGLBModel: () => set((state) => ({ useGLBModel: !state.useGLBModel })),
 
     trafficCycleTime: 0,
     updateTrafficCycle: (delta) => set((state) => ({

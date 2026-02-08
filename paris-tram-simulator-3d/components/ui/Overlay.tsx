@@ -291,7 +291,7 @@ const Overlay: React.FC = () => {
         indicatorLeft, indicatorRight, currentPower,
         message, conductorMessage, conductorMessageExpiry, scoreFloatingTexts, removeFloatingText,
         showMinimap, musicEnabled, toggleMusic, setTimeOfDay, setWeather,
-        viewDistance, setViewDistance
+        viewDistance, setViewDistance, useGLBModel, toggleGLBModel
     } = useGameStore(useShallow(state => ({
         score: state.score,
         speed: state.speed,
@@ -320,7 +320,9 @@ const Overlay: React.FC = () => {
         setTimeOfDay: state.setTimeOfDay,
         setWeather: state.setWeather,
         viewDistance: state.viewDistance,
-        setViewDistance: state.setViewDistance
+        setViewDistance: state.setViewDistance,
+        useGLBModel: state.useGLBModel,
+        toggleGLBModel: state.toggleGLBModel
     })));
 
     // Cleanup floating texts
@@ -455,6 +457,15 @@ const Overlay: React.FC = () => {
                             className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
                         />
                     </div>
+
+                    {/* GLB Model Toggle */}
+                    <div
+                        onClick={toggleGLBModel}
+                        className={`pointer-events-auto bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 font-bold text-xs tracking-wider cursor-pointer hover:bg-black/70 active:scale-95 transition-all select-none text-center ${useGLBModel ? 'text-green-400' : 'text-gray-400'}`}
+                        title="Toggle between procedural and GLB tram model"
+                    >
+                        TRAM: {useGLBModel ? '3D MODEL' : 'PROCEDURAL'}
+                    </div>
                 </div>
             </div>
 
@@ -466,6 +477,13 @@ const Overlay: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* Object Ttooltip */}
+            {useGameStore.getState().hoveredObject && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 mt-12 bg-black/80 text-white px-3 py-1 rounded border border-white/30 text-sm font-sans pointer-events-none z-[2000] backdrop-blur-md">
+                    {useGameStore.getState().hoveredObject}
+                </div>
+            )}
 
             {/* Bottom Controls Help & Dashboard */}
             <div className="flex items-end justify-between w-full relative">
@@ -480,6 +498,8 @@ const Overlay: React.FC = () => {
                         <ControlKey keys="C" desc="Lights" />
                         <ControlKey keys="B" desc="Wipers" />
                         <ControlKey keys="X" desc="Windows" />
+                        <ControlKey keys="I" desc="Driver" />
+                        <ControlKey keys="R" desc="Sunblind" />
                         <ControlKey keys="N" desc="E-Brake" />
                         <ControlKey keys="M" desc="Minimap" />
                         <ControlKey keys="T" desc="Teleport (on Map)" />

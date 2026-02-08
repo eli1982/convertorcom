@@ -623,14 +623,10 @@ const City: React.FC = () => {
 
 
     const buildings = useMemo(() => {
-        const b: { x: number, z: number, type: 'tower' | 'arc' | 'generic' }[] = [
-            { x: -130, z: 0, type: 'tower' },   // Near Eiffel Tower stop (-100, 0, 0)
-            { x: -130, z: -200, type: 'arc' }  // Near Arc de Triomphe stop (-100, 0, -200)
-        ];
-
-        // Random generation disabled
-
-        return b;
+        return [
+            { x: -130, z: 0, type: 'tower' }, // Reverted to 0 as requested
+            { x: -130, z: -200, type: 'arc' }
+        ] as { x: number, z: number, type: 'tower' | 'arc' | 'generic' }[];
     }, []);
 
     return (
@@ -665,7 +661,8 @@ const City: React.FC = () => {
                         </mesh>
                     </group>
                 );
-            })}
+            })
+            }
 
             {/* Tram Garage - Track is at X=200, facing it from 240 */}
             <TramGarage position={[240, 0, 100]} rotation={-Math.PI / 2} />
@@ -680,12 +677,15 @@ const City: React.FC = () => {
             <TrackHighlights />
             <CatenaryOptimized />
 
-            {buildings.map((b, i) => (
-                <Building key={i} position={[b.x, 0, b.z]} type={b.type} texture={brickTexture} />
-            ))}
+            {/* Render only explicit landmarks if any additional ones are needed, but 'buildings' array only has landmarks now */}
+            {
+                buildings.map((b, i) => (
+                    <Building key={i} position={[b.x, 0, b.z]} type={b.type} texture={brickTexture} />
+                ))
+            }
 
             {STOPS.map(stop => <StopMarker key={stop.id} stop={stop} />)}
-        </group>
+        </group >
     );
 };
 

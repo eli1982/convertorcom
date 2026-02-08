@@ -1,12 +1,13 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, Suspense } from 'react';
 import TramMesh from './TramMesh';
+import TramModelGLB from './TramModelGLB';
 
 import { useFrame, useThree, ThreeElements } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore, tramRealtimeData } from '../../store/useGameStore';
 import { useShallow } from 'zustand/react/shallow';
 import { GAME_CONFIG, TRACKS, MAP_NODES, STOPS, MATERIALS, ROUTE_IDS } from '../../constants';
-import { playBell, playDoorSound } from '../../utils/audioUtils';
+import { playBell, playDoorSound, playIndicatorSound } from '../../utils/audioUtils';
 
 const Headlights: React.FC<{ lightsOn: boolean, target: THREE.Object3D }> = ({ lightsOn, target }) => {
     const timeOfDay = useGameStore(state => state.timeOfDay);
@@ -236,16 +237,18 @@ const Tram: React.FC = () => {
     const pendingLeftBehind = useRef(0);
 
     const {
-        setSpeed, setPower, setNextStop, doorsOpen, rampExtended, pantographUp, lightsOn, wipersOn,
+        setSpeed, setPower, setNextStop, doorsOpen, driverDoorOpen, rampExtended, pantographUp, lightsOn, wipersOn,
         windowsOpen, indicatorLeft, indicatorRight, traction, eBrakeActive,
         toggleDoors, toggleRamp, togglePantograph, toggleLights, toggleWipers, toggleWindows, toggleEBrake, setIndicator,
         boardPassengers, showMessage, addScore, setPlatformSide, platformSide, toggleMinimap, stopQueues, advanceActiveStop, toggleDebugMode,
-        teleportTrackId, clearTeleportRequest
+        teleportTrackId, clearTeleportRequest,
+        sunblindDown, engineOn, driverVisible, toggleSunblind, toggleEngine, toggleDriver, useGLBModel
     } = useGameStore(useShallow(state => ({
         setSpeed: state.setSpeed,
         setPower: state.setPower,
         setNextStop: state.setNextStop,
         doorsOpen: state.doorsOpen,
+        driverDoorOpen: state.driverDoorOpen,
         rampExtended: state.rampExtended,
         pantographUp: state.pantographUp,
         lightsOn: state.lightsOn,
@@ -273,7 +276,14 @@ const Tram: React.FC = () => {
         advanceActiveStop: state.advanceActiveStop,
         toggleDebugMode: state.toggleDebugMode,
         teleportTrackId: state.teleportTrackId,
-        clearTeleportRequest: state.clearTeleportRequest
+        clearTeleportRequest: state.clearTeleportRequest,
+        sunblindDown: state.sunblindDown,
+        engineOn: state.engineOn,
+        driverVisible: state.driverVisible,
+        toggleSunblind: state.toggleSunblind,
+        toggleEngine: state.toggleEngine,
+        toggleDriver: state.toggleDriver,
+        useGLBModel: state.useGLBModel
     })));
 
     // Handle Teleportation Request
@@ -350,14 +360,25 @@ const Tram: React.FC = () => {
             const k = e.key.toLowerCase();
             if (k === 'h') playBell();
 
-            // Remap P to switch camera between platforms
-            if (k === 'p') {
+            // P = Pantograph Control
+            if (k === 'p') togglePantograph();
+
+            // O = Debug Camera (Moved from P)
+            if (k === 'o') {
                 debugCameraMode.current = true;
                 debugStopIndex.current = (debugStopIndex.current + 1) % STOPS.length;
             }
 
-            // Remap O to toggle Pantograph (was P)
-            if (k === 'o') togglePantograph();
+            // R = Sunblind
+            if (k === 'r') toggleSunblind();
+
+            // E = Engine
+            if (k === 'e') toggleEngine();
+
+            // I = Driver (Interior/Driver visibility)
+            if (k === 'i') {
+                toggleDriver();
+            }
 
             if (k === 'c') toggleLights();
             if (k === 'g') {
@@ -402,6 +423,24 @@ const Tram: React.FC = () => {
         };
 
         const onMouseDown = (e: MouseEvent) => {
+            if (e.button === 0) { // Left Click
+                // We'll trust React Three Fiber's event system for specific meshes, 
+                // but if we need global raycasting we can do it here.
+                // However, since we are adding 'onClick' to meshes in TramMesh, 
+                // we might not need global raycast for everything.
+                // But for "interact with things on the tram and outside", 
+                // let's stick to adding onClick handlers on the specific meshes in TramMesh.
+                // If we need to click "outside", we can rely on standard pointer events.
+
+                // For now, let's keep the camera drag logic but prevent it if we clicked an interactive object?
+                // R3F events bubble. e.stopPropagation() in the mesh onClick will prevent this listener 
+                // if we attach this listener to the window. 
+                // Actually, window listener receives it last usually? No, native events vs React events.
+                // R3F events are independent.
+
+                // Let's rely on R3F onClick for specific interactions.
+            }
+
             camControl.current.isDragging = true;
             camControl.current.lastMouseX = e.clientX;
             camControl.current.lastMouseY = e.clientY;
@@ -472,12 +511,26 @@ const Tram: React.FC = () => {
     const lastUpdate = useRef(0);
 
     useFrame((state, delta) => {
-        const dt = 1 / 60;
+        if (!group.current) return;
+
+        const dt = Math.min(delta, 0.1);
+
+        // Physics Updates
         const p = physics.current;
 
+        // Handle Driver Position logic
+        if (!driverVisible && group.current) {
+            // Driver is Outside
+            // Calculate a position relative to the Front Right door (approx x=2, z=2)
+            const offset = new THREE.Vector3(2, 0, 2);
+            offset.applyEuler(group.current.rotation);
+            const driverWorldPos = group.current.position.clone().add(offset);
+            tramRealtimeData.driverPosition = driverWorldPos;
+        } else {
+            tramRealtimeData.driverPosition = null;
+        }
 
-
-        // --- Physics & Input ---
+        // --- Acceleration / Deceleration ---
         let powerInput = 0;
 
         // Auto-disable debug camera if tram moves
@@ -488,43 +541,47 @@ const Tram: React.FC = () => {
         const TARGET_SPEED_CHANGE_RATE = 100 * dt; // Change target by ~100 km/h per second
 
         // Input Handling for Target Speed
-        if (keys.current['KeyW']) {
-            if (doorsOpen) {
-                showMessage("Close doors before moving!");
-                p.targetSpeed = 0;
-            } else if (rampExtended) {
-                showMessage("Retract ramp before moving!");
-                p.targetSpeed = 0;
-            } else if (!pantographUp) {
-                showMessage("Raise Pantograph for power!");
-                p.targetSpeed = 0;
-            } else if (eBrakeActive) {
-                showMessage("Release E-Brake (N) to move!");
-                p.targetSpeed = 0;
-            } else {
-                p.targetSpeed += TARGET_SPEED_CHANGE_RATE;
-            }
-        }
-        else if (keys.current['KeyS']) {
-            p.targetSpeed -= TARGET_SPEED_CHANGE_RATE;
-        } else {
-            // Auto-stop at low speeds if no keys pressed
-            if (Math.abs(p.speed) <= 25 && p.targetSpeed !== 0) {
-                const autoStopRate = TARGET_SPEED_CHANGE_RATE * 0.5;
-                if (p.targetSpeed > 0) {
-                    p.targetSpeed = Math.max(0, p.targetSpeed - autoStopRate);
-                } else if (p.targetSpeed < 0) {
-                    p.targetSpeed = Math.min(0, p.targetSpeed + autoStopRate);
+        if (driverVisible) {
+            if (keys.current['KeyW']) {
+                if (doorsOpen) {
+                    showMessage("Close doors before moving!");
+                    p.targetSpeed = 0;
+                } else if (rampExtended) {
+                    showMessage("Retract ramp before moving!");
+                    p.targetSpeed = 0;
+                } else if (!pantographUp) {
+                    showMessage("Raise Pantograph for power!");
+                    p.targetSpeed = 0;
+                } else if (eBrakeActive) {
+                    showMessage("Release E-Brake (N) to move!");
+                    p.targetSpeed = 0;
+                } else if (!engineOn) {
+                    showMessage("Start Engine (E) first!");
+                    p.targetSpeed = 0;
+                } else {
+                    // Accelerate (Clamp to Max Speed)
+                    p.targetSpeed += TARGET_SPEED_CHANGE_RATE;
+                    if (p.targetSpeed > GAME_CONFIG.maxSpeed) p.targetSpeed = GAME_CONFIG.maxSpeed;
                 }
             }
-        }
-
-        // Clamp Target Speed (-20 to Max)
-        p.targetSpeed = Math.max(-20, Math.min(GAME_CONFIG.maxSpeed, p.targetSpeed));
-
-        // Emergency Blockers check (Continuous safety)
-        if (doorsOpen || rampExtended || !pantographUp || eBrakeActive) {
-            // Force target to 0 if state changes while moving
+            else if (keys.current['KeyS']) {
+                // Decelerate / Reverse (Clamp to -Max Speed)
+                p.targetSpeed -= TARGET_SPEED_CHANGE_RATE;
+                if (p.targetSpeed < -GAME_CONFIG.maxSpeed) p.targetSpeed = -GAME_CONFIG.maxSpeed;
+            } else {
+                // Auto-stop at low speeds if no keys pressed
+                if (Math.abs(p.speed) <= 25 && p.targetSpeed !== 0) {
+                    const autoStopRate = TARGET_SPEED_CHANGE_RATE * 0.5;
+                    // Move target speed towards 0
+                    if (p.targetSpeed > 0) {
+                        p.targetSpeed = Math.max(0, p.targetSpeed - autoStopRate);
+                    } else if (p.targetSpeed < 0) {
+                        p.targetSpeed = Math.min(0, p.targetSpeed + autoStopRate);
+                    }
+                }
+            }
+        } else {
+            // Driver is outside - Force stop/brake
             p.targetSpeed = 0;
         }
 
@@ -823,20 +880,62 @@ const Tram: React.FC = () => {
     return (
         <>
             <group ref={group}>
-                <TramMesh
-                    ref={meshGroup}
-                    lightsOn={lightsOn}
-                    doorsOpen={doorsOpen}
-                    rampExtended={rampExtended}
-                    pantographUp={pantographUp}
-                    wipersOn={wipersOn}
-                    windowsOpen={windowsOpen}
-                    platformSide={platformSide || 'right'}
-                    excludeBulbs={true}
-                    onToggleDoors={handleToggleDoors}
-                >
-                    <Headlights lightsOn={lightsOn} target={spotLightTarget.current} />
-                </TramMesh>
+                {useGLBModel ? (
+                    <Suspense fallback={null}>
+                        <TramModelGLB
+                            ref={meshGroup}
+                            lightsOn={lightsOn}
+                        >
+                            <Headlights lightsOn={lightsOn} target={spotLightTarget.current} />
+                        </TramModelGLB>
+                    </Suspense>
+                ) : (
+                    <TramMesh
+                        ref={meshGroup}
+                        lightsOn={lightsOn}
+                        doorsOpen={doorsOpen}
+                        rampExtended={rampExtended}
+                        pantographUp={pantographUp}
+                        wipersOn={wipersOn}
+                        windowsOpen={windowsOpen}
+                        platformSide={platformSide || 'right'}
+                        excludeBulbs={true}
+                        sunblindDown={sunblindDown}
+                        driverVisible={driverVisible}
+                        indicatorLeft={indicatorLeft}
+                        indicatorRight={indicatorRight}
+                        driverDoorOpen={driverDoorOpen}
+                        onToggleDoors={handleToggleDoors}
+                    >
+                        <Headlights lightsOn={lightsOn} target={spotLightTarget.current} />
+                    </TramMesh>
+                )}
+
+                {/* External Driver Represenation (when outside) */}
+                {!driverVisible && (
+                    <group position={[2, 0, 2]}>
+                        {/* RATP Driver Outside */}
+                        <mesh position={[0, 0.9, 0]}>
+                            <boxGeometry args={[0.5, 1.8, 0.5]} />
+                            <meshStandardMaterial color="#003366" />
+                        </mesh>
+                        <mesh position={[0, 1.9, 0]}>
+                            <sphereGeometry args={[0.25, 16, 16]} />
+                            <meshStandardMaterial color="#ffccaa" />
+                        </mesh>
+                        {/* Hat */}
+                        <group position={[0, 2.05, 0]}>
+                            <mesh position={[0, 0.05, 0]}>
+                                <cylinderGeometry args={[0.24, 0.24, 0.1, 16]} />
+                                <meshStandardMaterial color="#003366" />
+                            </mesh>
+                            <mesh position={[0.15, 0, 0]} rotation-z={-0.2}>
+                                <boxGeometry args={[0.2, 0.02, 0.2]} />
+                                <meshStandardMaterial color="#000" />
+                            </mesh>
+                        </group>
+                    </group>
+                )}
             </group>
             <SoapBubbles tramRef={meshGroup} />
         </>

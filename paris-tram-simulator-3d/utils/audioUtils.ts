@@ -32,3 +32,11 @@ export function playBell() {
 export function playDoorSound() {
     playTone(200, 'square', 0.2);
 }
+
+export function playIndicatorSound() {
+    // High tick
+    playTone(800, 'square', 0.05);
+    // Low tock (simulated by caller alternating, or just a simple click)
+    // Actually, usually it's just a click. Let's make a distinct click.
+    // We'll just play one sound, the caller loop will handle the rhythm.
+}

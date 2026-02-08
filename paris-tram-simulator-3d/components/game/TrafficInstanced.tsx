@@ -155,6 +155,7 @@ const TrafficInstanced: React.FC = () => {
         const tramSpeed = useGameStore.getState().speed;
         const tramPos = new THREE.Vector3(tramRealtimeData.x, 0, tramRealtimeData.z);
         const currentTrackId = tramRealtimeData.currentTrackId;
+        const driverPos = tramRealtimeData.driverPosition;
 
         // --- 1. Physics Update Loop ---
         // Optimization: Spatial Hash or just Loop. For 200 items, nested loop is 40k.
@@ -240,6 +241,15 @@ const TrafficInstanced: React.FC = () => {
                         obstaclesAhead = true;
                         targetSpeed = Math.min(targetSpeed, 15);
                     }
+                }
+            }
+
+            // Check Driver on Road
+            if (driverPos) {
+                const distToDriver = s.position.distanceTo(driverPos);
+                if (distToDriver < 8) { // Safety radius
+                    obstaclesAhead = true;
+                    targetSpeed = 0;
                 }
             }
 
