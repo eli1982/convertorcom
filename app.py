@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
+from flask import Flask, request, jsonify, send_file, render_template, send_from_directory, redirect
 from flask_cors import CORS
 import os
 import threading
@@ -293,6 +293,22 @@ def delete_game_version(game_id, version):
         return jsonify({'success': True, 'message': 'Game version deleted'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/fire-simulator')
+def serve_fire_simulator_redirect():
+    return redirect('/fire-simulator/')
+
+@app.route('/fire-simulator/')
+def serve_fire_simulator_index():
+    # Use os.path.abspath to ensure correct path
+    dist_dir = os.path.join(os.getcwd(), 'fire-simulator', 'dist')
+    return send_from_directory(dist_dir, 'index.html')
+
+@app.route('/fire-simulator/<path:filename>')
+def serve_fire_simulator_files(filename):
+    dist_dir = os.path.join(os.getcwd(), 'fire-simulator', 'dist')
+    return send_from_directory(dist_dir, filename)
 
 
 if __name__ == '__main__':
